@@ -30,11 +30,9 @@ export default function App() {
     const email = `${login}@app.local`;
 
     if (isLoginMode) {
-      // Логика ВХОДА
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) alert('Ошибка входа: проверьте логин или пароль');
     } else {
-      // Логика РЕГИСТРАЦИИ
       if (inviteCode !== '7777') {
         alert('Неверный инвайт-код!');
         return;
@@ -48,7 +46,6 @@ export default function App() {
       }
 
       if (data.user) {
-        // Создаем профиль пользователя в нашей таблице profiles
         const { error: profileError } = await supabase
           .from('profiles')
           .insert([{ id: data.user.id, login: login, display_name: displayName }]);
@@ -78,7 +75,7 @@ export default function App() {
               value={login} 
               onChange={e => setLogin(e.target.value.toLowerCase())}
               className="w-full bg-slate-700 rounded p-2 border border-slate-600 focus:outline-none focus:border-indigo-500"
-              placeholder="egorruf" 
+              placeholder="login" 
               required
             />
           </div>
@@ -143,7 +140,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 pb-12">
-      {/* Шапка */}
       <header className="bg-slate-900 border-b border-slate-800 p-4 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto flex justify-between items-center">
           <span className="font-bold text-indigo-400 text-lg">Друзья & Встречи</span>
@@ -155,7 +151,6 @@ export default function App() {
         </div>
       </header>
 
-      {/* Навигация */}
       <nav className="max-w-4xl mx-auto flex gap-2 p-4">
         {[
           { id: 'calendar', name: '🗓 Сводный календарь' },
@@ -174,59 +169,71 @@ export default function App() {
         ))}
       </nav>
 
-      {/* Контент */}
       <main className="max-w-4xl mx-auto p-4">
         {activeTab === 'calendar' && <CalendarView userId={session.user.id} />}
-        {activeTab === 'events' && <EventsView userId={session.user.id} />}
-        {activeTab === 'debts' && <DebtsView userId={session.user.id} />}
+        {activeTab === 'events' && <EventsView />}
+        {activeTab === 'debts' && <DebtsView />}
       </main>
     </div>
   );
 }
 
 function CalendarView({ userId }) {
-  // Состояния для хранения выбранной даты и активных слотов
+  // Текущий месяц для отображения сетки календаря
+  const [currentMonth, setCurrentMonth] = React.useState(new Date());
+  
+  // Выбранная дата для просмотра/редактирования слотов (формат YYYY-MM-DD)
   const [selectedDate, setSelectedDate] = React.useState(new Date().toISOString().split('T')[0]);
+  
   const [mySlots, setMySlots] = React.useState([]);
+  const [friendsAvail, setFriendsAvail] = React.useState({ morning: [], afternoon: [], evening: [], night: [] });
   const [isLoading, setIsLoading] = React.useState(false);
 
-  // Загрузка слотов из Supabase при смене даты
+  // Загрузка данных при клике на день
   React.useEffect(() => {
-    async function fetchSlots() {
-      const { data, error } = await supabase
+    async function fetchData() {
+      // 1. Загружаем МОИ слоты
+      const { data: myData } = await supabase
         .from('availability')
         .select('slot')
         .eq('user_id', userId)
         .eq('date', selectedDate);
         
-      if (data) {
-        setMySlots(data.map(d => d.slot));
+      if (myData) setMySlots(myData.map(d => d.slot));
+
+      // 2. Загружаем слоты ВСЕЙ компании (чтобы показать "график свободных")
+      const { data: friendsData } = await supabase
+        .from('availability')
+        .select('slot, user_id, profiles(display_name)')
+        .eq('date', selectedDate);
+
+      if (friendsData) {
+        const grouped = { morning: [], afternoon: [], evening: [], night: [] };
+        friendsData.forEach(item => {
+          // Исключаем самого себя из списка "друзей" для наглядности (опционально, но лучше показать всех)
+          if (item.profiles && item.profiles.display_name) {
+            grouped[item.slot].push(item.profiles.display_name);
+          }
+        });
+        // Убираем дубликаты имен в слотах
+        Object.keys(grouped).forEach(k => {
+          grouped[k] = [...new Set(grouped[k])];
+        });
+        setFriendsAvail(grouped);
       }
     }
-    fetchSlots();
+    fetchData();
   }, [selectedDate, userId]);
 
-  // Функция переключения статуса слота (свободен/занят)
   const toggleSlot = async (slotId) => {
     setIsLoading(true);
-    
     if (mySlots.includes(slotId)) {
-      // Если слот уже был выбран — удаляем запись (пользователь стал "занят")
-      await supabase
-        .from('availability')
-        .delete()
-        .match({ user_id: userId, date: selectedDate, slot: slotId });
-        
+      await supabase.from('availability').delete().match({ user_id: userId, date: selectedDate, slot: slotId });
       setMySlots(mySlots.filter(s => s !== slotId));
     } else {
-      // Если слот не выбран — добавляем запись (пользователь стал "свободен")
-      await supabase
-        .from('availability')
-        .insert({ user_id: userId, date: selectedDate, slot: slotId });
-        
+      await supabase.from('availability').insert({ user_id: userId, date: selectedDate, slot: slotId });
       setMySlots([...mySlots, slotId]);
     }
-    
     setIsLoading(false);
   };
 
@@ -237,44 +244,124 @@ function CalendarView({ userId }) {
     { id: 'night', label: 'До утра (23:00+)' }
   ];
 
+  // Генерация сетки календаря
+  const year = currentMonth.getFullYear();
+  const month = currentMonth.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  let firstDayIndex = new Date(year, month, 1).getDay();
+  firstDayIndex = firstDayIndex === 0 ? 6 : firstDayIndex - 1; // Делаем понедельник первым днем
+  
+  const blanks = Array(firstDayIndex).fill(null);
+  const days = Array.from({length: daysInMonth}, (_, i) => i + 1);
+  const monthNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+
+  const prevMonth = () => setCurrentMonth(new Date(year, month - 1, 1));
+  const nextMonth = () => setCurrentMonth(new Date(year, month + 1, 1));
+
+  const formatDayString = (d) => {
+    const m = String(month + 1).padStart(2, '0');
+    const day = String(d).padStart(2, '0');
+    return `${year}-${m}-${day}`;
+  };
+
   return (
-    <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
-      <h2 className="text-xl font-bold mb-4 text-indigo-300">Мой календарь доступности</h2>
-      <p className="text-slate-400 text-sm mb-6">
-        По умолчанию ты занят. Выбери дату и нажми на удобные слоты, чтобы отметить себя свободным. Данные сохраняются автоматически.
-      </p>
+    <div className="space-y-6">
       
-      {/* Выбор даты */}
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-slate-300 mb-2">Выберите день:</label>
-        <input 
-          type="date" 
-          value={selectedDate}
-          onChange={(e) => setSelectedDate(e.target.value)}
-          className="bg-slate-800 border border-slate-700 text-white rounded p-2 focus:outline-none focus:border-indigo-500"
-        />
+      {/* 1. ВИЗУАЛЬНЫЙ КАЛЕНДАРЬ */}
+      <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold text-indigo-300">Выберите дату</h2>
+          <div className="flex items-center gap-4">
+            <button onClick={prevMonth} className="text-slate-400 hover:text-white bg-slate-800 px-3 py-1 rounded">&larr;</button>
+            <span className="font-semibold text-slate-200">{monthNames[month]} {year}</span>
+            <button onClick={nextMonth} className="text-slate-400 hover:text-white bg-slate-800 px-3 py-1 rounded">&rarr;</button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-7 gap-1 text-center mb-2">
+          {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(d => (
+            <div key={d} className="text-xs font-semibold text-slate-500 py-1">{d}</div>
+          ))}
+        </div>
+        
+        <div className="grid grid-cols-7 gap-1">
+          {blanks.map((_, i) => <div key={`blank-${i}`} />)}
+          {days.map(day => {
+            const dateStr = formatDayString(day);
+            const isSelected = selectedDate === dateStr;
+            const isToday = new Date().toISOString().split('T')[0] === dateStr;
+
+            return (
+              <button
+                key={day}
+                onClick={() => setSelectedDate(dateStr)}
+                className={`p-2 rounded-lg text-sm font-medium transition ${
+                  isSelected 
+                    ? 'bg-indigo-600 text-white shadow-md' 
+                    : isToday 
+                      ? 'bg-slate-800 text-indigo-400 border border-indigo-500/30' 
+                      : 'bg-slate-800/50 text-slate-300 hover:bg-slate-700'
+                }`}
+              >
+                {day}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Кнопки слотов */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-        {slotsConfig.map(slot => {
-          const isActive = mySlots.includes(slot.id);
-          return (
-            <button
-              key={slot.id}
-              onClick={() => toggleSlot(slot.id)}
-              disabled={isLoading}
-              className={`p-3 rounded-lg transition border ${
-                isActive 
-                  ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-900/50' 
-                  : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'
-              } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-            >
-              {slot.label}
-            </button>
-          );
-        })}
+      {/* 2. МОЯ ДОСТУПНОСТЬ НА ВЫБРАННЫЙ ДЕНЬ */}
+      <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+        <h3 className="text-lg font-bold mb-2 text-indigo-200">Моя доступность</h3>
+        <p className="text-slate-400 text-sm mb-4">Отметьте слоты, в которые вы свободны {selectedDate}:</p>
+        
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+          {slotsConfig.map(slot => {
+            const isActive = mySlots.includes(slot.id);
+            return (
+              <button
+                key={slot.id}
+                onClick={() => toggleSlot(slot.id)}
+                disabled={isLoading}
+                className={`p-3 rounded-lg transition border ${
+                  isActive 
+                    ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-900/50' 
+                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'
+                } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                {slot.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
+
+      {/* 3. СВОДКА (ГРАФИК): КТО СВОБОДЕН */}
+      <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+        <h3 className="text-lg font-bold mb-4 text-emerald-400">Кто свободен в этот день</h3>
+        <div className="space-y-3">
+          {slotsConfig.map(slot => {
+            const people = friendsAvail[slot.id];
+            return (
+              <div key={slot.id} className="bg-slate-800/50 p-3 rounded flex flex-col sm:flex-row sm:items-center justify-between border border-slate-800">
+                <span className="text-slate-300 font-medium text-sm mb-2 sm:mb-0">{slot.label}</span>
+                <div className="flex flex-wrap gap-1">
+                  {people.length > 0 ? (
+                    people.map((name, i) => (
+                      <span key={i} className="bg-emerald-900/50 text-emerald-400 border border-emerald-800 text-xs px-2 py-1 rounded">
+                        {name}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-slate-500 text-xs italic">Никто не свободен</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
     </div>
   );
 }
@@ -283,9 +370,7 @@ function EventsView() {
   return (
     <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
       <h2 className="text-xl font-bold mb-4 text-indigo-300">Список встреч</h2>
-      <button className="bg-indigo-600 hover:bg-indigo-500 text-sm font-semibold px-4 py-2 rounded mb-4">
-        + Создать ивент
-      </button>
+      <p className="text-slate-400 text-sm mb-4">В разработке...</p>
     </div>
   );
 }
@@ -294,7 +379,7 @@ function DebtsView() {
   return (
     <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
       <h2 className="text-xl font-bold mb-4 text-indigo-300">Матрица долгов и погашения</h2>
-      <p className="text-slate-400 text-sm mb-4">Любой участник может зафиксировать факт передачи денег за себя или за другого друга.</p>
+      <p className="text-slate-400 text-sm mb-4">В разработке...</p>
     </div>
   );
 }
