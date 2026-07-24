@@ -15,16 +15,16 @@ const formatReadableDate = (dateStr) => {
   return `${parseInt(day)} ${months[parseInt(month) - 1]} ${year}`;
 };
 
-// Утилиты для генерации уникального цвета пользователя на основе его имени
+// Утилиты для генерации уникального цвета пользователя (Светлая тема / Material)
 const getUserBadgeClass = (name) => {
-  if (!name) return 'bg-zinc-800 border-zinc-700 text-zinc-400';
+  if (!name) return 'bg-gray-100 border-gray-200 text-gray-500';
   const palettes = [
-    'bg-rose-500/10 border-rose-500/20 text-rose-400',
-    'bg-blue-500/10 border-blue-500/20 text-blue-400',
-    'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
-    'bg-purple-500/10 border-purple-500/20 text-purple-400',
-    'bg-amber-500/10 border-amber-500/20 text-amber-400',
-    'bg-cyan-500/10 border-cyan-500/20 text-cyan-400',
+    'bg-red-50 border-red-200 text-red-700',
+    'bg-blue-50 border-blue-200 text-blue-700',
+    'bg-green-50 border-green-200 text-green-700',
+    'bg-purple-50 border-purple-200 text-purple-700',
+    'bg-amber-50 border-amber-200 text-amber-700',
+    'bg-cyan-50 border-cyan-200 text-cyan-700',
   ];
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
@@ -32,8 +32,8 @@ const getUserBadgeClass = (name) => {
 };
 
 const getUserTextClass = (name) => {
-  if (!name) return 'text-zinc-400';
-  const colors = ['text-rose-400', 'text-blue-400', 'text-emerald-400', 'text-purple-400', 'text-amber-400', 'text-cyan-400'];
+  if (!name) return 'text-gray-500';
+  const colors = ['text-red-600', 'text-blue-600', 'text-green-600', 'text-purple-600', 'text-amber-600', 'text-cyan-600'];
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
   return colors[Math.abs(hash) % colors.length];
@@ -103,39 +103,46 @@ export default function App() {
     }
   };
 
+  // Единый стиль инпутов
+  const inputBaseClass = "w-full bg-white rounded-md p-3 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors text-gray-800 placeholder-gray-400 shadow-sm";
+
   if (!session) {
     return (
-      <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center p-4">
-        <form onSubmit={handleAuth} className="bg-zinc-900 p-8 rounded-2xl border border-zinc-800 shadow-2xl w-full max-w-sm space-y-5">
-          <h1 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-amber-400 text-center mb-6">
-            {isLoginMode ? 'Вход' : 'Регистрация'}
-          </h1>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 font-sans text-gray-900">
+        <form onSubmit={handleAuth} className="bg-white p-8 rounded-2xl shadow-lg border border-gray-100 w-full max-w-sm space-y-5">
+          <div className="text-center mb-6">
+            <h1 className="text-3xl font-bold text-gray-800 tracking-tight">
+              {isLoginMode ? 'Вход' : 'Регистрация'}
+            </h1>
+            <p className="text-sm text-gray-500 mt-2">Добро пожаловать в Friend Planner</p>
+          </div>
+
           <div>
-            <label className="block text-sm font-medium text-zinc-400 mb-1">Логин (на англ.)</label>
-            <input type="text" value={login} onChange={e => setLogin(e.target.value.toLowerCase())} className="w-full bg-zinc-950 rounded-lg p-3 border border-zinc-800 focus:outline-none focus:border-amber-500 transition-colors" placeholder="login" required />
+            <label className="block text-sm font-medium text-gray-700 mb-1">Логин (на англ.)</label>
+            <input type="text" value={login} onChange={e => setLogin(e.target.value.toLowerCase())} className={inputBaseClass} placeholder="Логин" required />
           </div>
           {!isLoginMode && (
             <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">Имя</label>
-              <input type="text" value={displayName} onChange={e => setDisplayName(e.target.value)} className="w-full bg-zinc-950 rounded-lg p-3 border border-zinc-800 focus:outline-none focus:border-amber-500 transition-colors" placeholder="Егор" required={!isLoginMode} />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Имя (отображаемое)</label>
+              <input type="text" value={displayName} onChange={e => setDisplayName(e.target.value)} className={inputBaseClass} placeholder="Егор" required={!isLoginMode} />
             </div>
           )}
           <div>
-            <label className="block text-sm font-medium text-zinc-400 mb-1">Пароль (мин. 6 символов)</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-zinc-950 rounded-lg p-3 border border-zinc-800 focus:outline-none focus:border-amber-500 transition-colors" required minLength={6} />
+            <label className="block text-sm font-medium text-gray-700 mb-1">Пароль (мин. 6 символов)</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} className={inputBaseClass} required minLength={6} />
           </div>
           {!isLoginMode && (
             <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">Инвайт-код</label>
-              <input type="text" value={inviteCode} onChange={e => setInviteCode(e.target.value)} className="w-full bg-zinc-950 rounded-lg p-3 border border-zinc-800 focus:outline-none focus:border-amber-500 transition-colors" placeholder="7777" required={!isLoginMode} />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Инвайт-код</label>
+              <input type="text" value={inviteCode} onChange={e => setInviteCode(e.target.value)} className={inputBaseClass} placeholder="Код приглашения" required={!isLoginMode} />
             </div>
           )}
-          <button type="submit" className="w-full bg-gradient-to-r from-red-600 to-amber-500 hover:from-red-500 hover:to-amber-400 text-white font-bold py-3 rounded-lg transition-all shadow-lg shadow-red-900/20">
+          <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-md transition-colors shadow-sm">
             {isLoginMode ? 'Войти' : 'Зарегистрироваться'}
           </button>
           <div className="text-center pt-2">
-            <button type="button" onClick={() => setIsLoginMode(!isLoginMode)} className="text-sm text-zinc-500 hover:text-amber-400 transition-colors">
-              {isLoginMode ? 'Нет аккаунта? Регистрация' : 'Уже есть аккаунт? Войти'}
+            <button type="button" onClick={() => setIsLoginMode(!isLoginMode)} className="text-sm text-blue-600 hover:text-blue-800 transition-colors font-medium">
+              {isLoginMode ? 'Создать аккаунт' : 'Уже есть аккаунт? Войти'}
             </button>
           </div>
         </form>
@@ -144,46 +151,54 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 pb-12 font-sans">
-      <header className="bg-zinc-900/80 backdrop-blur-md border-b border-zinc-800 p-4 sticky top-0 z-20">
+    <div className="min-h-screen bg-gray-50 text-gray-900 pb-12 font-sans selection:bg-blue-200">
+      <header className="bg-white border-b border-gray-200 p-4 sticky top-0 z-20 shadow-sm">
         <div className="max-w-4xl mx-auto flex justify-between items-center">
-          <span className="font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-amber-400 text-xl tracking-tight">
-            FRIEND PLANNER
+          <span className="font-bold text-blue-600 text-xl tracking-tight flex items-center gap-2">
+            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20a2 2 0 002 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zM9 14H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2z"/></svg>
+            Friend Planner
           </span>
           <div className="flex items-center gap-4">
-            <span className={`text-sm hidden sm:block font-bold ${getUserTextClass(profiles[session.user.id])}`}>
-              {profiles[session.user.id]}
-            </span>
-            <button onClick={() => supabase.auth.signOut()} className="text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-4 py-2 rounded-lg font-medium transition-colors">
+            <div className="hidden sm:flex items-center gap-2">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm bg-blue-100 text-blue-700`}>
+                {profiles[session.user.id]?.charAt(0).toUpperCase()}
+              </div>
+              <span className="text-sm font-medium text-gray-700">
+                {profiles[session.user.id]}
+              </span>
+            </div>
+            <button onClick={() => supabase.auth.signOut()} className="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-md font-medium transition-colors border border-gray-200">
               Выйти
             </button>
           </div>
         </div>
       </header>
 
-      <nav className="max-w-4xl mx-auto flex gap-2 p-4">
-        {[
-          { id: 'calendar', name: '🗓 Календарь' },
-          { id: 'events', name: '🎉 Ивенты' },
-          { id: 'debts', name: '💰 Долги' },
-        ].map(tab => (
-          <button
-            key={tab.id} onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${
-              activeTab === tab.id 
-                ? 'bg-gradient-to-r from-red-600 to-amber-500 text-white shadow-lg shadow-red-900/20' 
-                : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
-            }`}
-          >
-            {tab.name}
-          </button>
-        ))}
+      <nav className="max-w-4xl mx-auto flex p-4 justify-center sm:justify-start">
+        <div className="bg-white border border-gray-200 rounded-full p-1 flex shadow-sm w-full sm:w-auto">
+          {[
+            { id: 'calendar', name: 'Календарь' },
+            { id: 'events', name: 'События' },
+            { id: 'debts', name: 'Долги' },
+          ].map(tab => (
+            <button
+              key={tab.id} onClick={() => setActiveTab(tab.id)}
+              className={`flex-1 sm:flex-none px-6 py-2 rounded-full text-sm font-medium transition-colors ${
+                activeTab === tab.id 
+                  ? 'bg-blue-100 text-blue-700' 
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              {tab.name}
+            </button>
+          ))}
+        </div>
       </nav>
 
       <main className="max-w-4xl mx-auto p-4">
-        {activeTab === 'calendar' && <CalendarView userId={session.user.id} allProfiles={profiles} />}
-        {activeTab === 'events' && <EventsView userId={session.user.id} />}
-        {activeTab === 'debts' && <DebtsView userId={session.user.id} allProfiles={profiles} />}
+        {activeTab === 'calendar' && <CalendarView userId={session.user.id} allProfiles={profiles} inputClass={inputBaseClass} />}
+        {activeTab === 'events' && <EventsView userId={session.user.id} inputClass={inputBaseClass} />}
+        {activeTab === 'debts' && <DebtsView userId={session.user.id} allProfiles={profiles} inputClass={inputBaseClass} />}
       </main>
     </div>
   );
@@ -193,11 +208,9 @@ export default function App() {
 function CalendarView({ userId, allProfiles }) {
   const [currentMonth, setCurrentMonth] = React.useState(new Date());
   
-  // Состояния для модалки
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [selectedDate, setSelectedDate] = React.useState(getLocalToday());
   
-  // Данные внутри модалки
   const [mySlots, setMySlots] = React.useState([]);
   const [friendsAvail, setFriendsAvail] = React.useState({ morning: [], afternoon: [], evening: [], night: [] });
   const [dayEvents, setDayEvents] = React.useState([]);
@@ -227,7 +240,6 @@ function CalendarView({ userId, allProfiles }) {
         setMonthStats(counts);
       }
 
-      // Здесь связь с profiles указывать не нужно, нам нужны только даты
       const { data: eventsData } = await supabase.from('events').select('id, event_date').gte('event_date', startDate).lte('event_date', endDate);
       if (eventsData) {
         const evs = {};
@@ -258,7 +270,6 @@ function CalendarView({ userId, allProfiles }) {
         setFriendsAvail(grouped);
       }
 
-      // ЯВНОЕ УКАЗАНИЕ СВЯЗИ profiles!events_owner_id_fkey
       const { data: evsData, error: evsError } = await supabase
         .from('events')
         .select(`
@@ -326,21 +337,21 @@ function CalendarView({ userId, allProfiles }) {
   return (
     <div className="space-y-6">
       
-      <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 shadow-xl">
+      <div className="bg-white p-4 sm:p-6 rounded-2xl border border-gray-100 shadow-sm">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold text-amber-500 hidden sm:block">Календарь</h2>
-          <div className="flex items-center gap-4 bg-zinc-950 p-1 rounded-lg border border-zinc-800 w-full sm:w-auto justify-between">
-            <button onClick={() => setCurrentMonth(new Date(year, month - 1, 1))} className="text-zinc-400 hover:text-amber-400 px-4 py-2 rounded transition-colors">&larr;</button>
-            <span className="font-bold text-zinc-200 min-w-[120px] text-center">{monthNames[month]} {year}</span>
-            <button onClick={() => setCurrentMonth(new Date(year, month + 1, 1))} className="text-zinc-400 hover:text-amber-400 px-4 py-2 rounded transition-colors">&rarr;</button>
+          <h2 className="text-xl font-medium text-gray-800 hidden sm:block">Общий календарь</h2>
+          <div className="flex items-center justify-between w-full sm:w-auto bg-gray-50 p-1 rounded-md border border-gray-200">
+            <button onClick={() => setCurrentMonth(new Date(year, month - 1, 1))} className="text-gray-600 hover:bg-gray-200 hover:text-gray-900 px-3 py-1.5 rounded transition-colors">&larr;</button>
+            <span className="font-medium text-gray-800 min-w-[120px] text-center capitalize">{monthNames[month]} {year}</span>
+            <button onClick={() => setCurrentMonth(new Date(year, month + 1, 1))} className="text-gray-600 hover:bg-gray-200 hover:text-gray-900 px-3 py-1.5 rounded transition-colors">&rarr;</button>
           </div>
         </div>
 
-        <div className="grid grid-cols-7 gap-2 text-center mb-2">
-          {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(d => <div key={d} className="text-xs font-bold text-zinc-500 py-1">{d}</div>)}
+        <div className="grid grid-cols-7 gap-1 sm:gap-2 text-center mb-2">
+          {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(d => <div key={d} className="text-xs font-medium text-gray-500 py-1 uppercase">{d}</div>)}
         </div>
         
-        <div className="grid grid-cols-7 gap-2">
+        <div className="grid grid-cols-7 gap-1 sm:gap-2">
           {blanks.map((_, i) => <div key={`blank-${i}`} />)}
           {days.map(day => {
             const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -349,15 +360,16 @@ function CalendarView({ userId, allProfiles }) {
             const isCrowded = freeCount >= 3; 
             const hasEvents = monthEvents[dateStr] && monthEvents[dateStr].length > 0;
 
-            let btnClass = 'bg-zinc-950 text-zinc-300 hover:bg-zinc-800 border-2 border-transparent';
-            if (isCrowded) btnClass = 'bg-amber-950/40 text-amber-400 border-2 border-amber-500/30 font-bold hover:bg-amber-900/50';
-            
-            if (isToday) btnClass += ' ring-2 ring-amber-500/80 ring-offset-2 ring-offset-zinc-900 text-amber-300';
+            let btnClass = 'bg-transparent text-gray-700 hover:bg-gray-100 rounded-full h-10 w-10 sm:h-12 sm:w-12 mx-auto';
+            if (isCrowded) btnClass = 'bg-blue-50 text-blue-800 font-medium hover:bg-blue-100 rounded-full h-10 w-10 sm:h-12 sm:w-12 mx-auto';
+            if (isToday) btnClass = 'bg-blue-600 text-white font-bold hover:bg-blue-700 shadow-md rounded-full h-10 w-10 sm:h-12 sm:w-12 mx-auto';
 
             return (
-              <button key={day} onClick={() => handleDayClick(dateStr)} className={`relative p-2 h-12 rounded-xl text-sm transition-all duration-200 ${btnClass} flex flex-col items-center justify-center cursor-pointer`}>
+              <button key={day} onClick={() => handleDayClick(dateStr)} className={`relative flex flex-col items-center justify-center text-sm transition-all cursor-pointer ${btnClass}`}>
                 <span>{day}</span>
-                {hasEvents && <span className="absolute bottom-1.5 w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_5px_rgba(239,68,68,0.8)]"></span>}
+                {hasEvents && (
+                  <span className={`absolute bottom-1 w-1.5 h-1.5 rounded-full ${isToday ? 'bg-white' : 'bg-blue-500'}`}></span>
+                )}
               </button>
             );
           })}
@@ -365,28 +377,28 @@ function CalendarView({ userId, allProfiles }) {
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col relative animate-fade-in">
+        <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col relative animate-fade-in border border-gray-100">
             
-            <div className="sticky top-0 bg-zinc-900/95 p-5 border-b border-zinc-800 flex justify-between items-center z-10">
-              <h3 className="text-xl font-bold text-white capitalize">{formatReadableDate(selectedDate)}</h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-zinc-500 hover:text-white text-3xl leading-none">&times;</button>
+            <div className="sticky top-0 bg-white/95 backdrop-blur-md p-5 border-b border-gray-100 flex justify-between items-center z-10 rounded-t-2xl">
+              <h3 className="text-xl font-medium text-gray-900">{formatReadableDate(selectedDate)}</h3>
+              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
             </div>
 
             <div className="p-5 space-y-8">
               
               {/* Карточка 1: Выбор слотов */}
-              <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800/50">
-                <h4 className="text-xs font-bold text-zinc-400 mb-3 uppercase tracking-wider text-center">Моя доступность</h4>
-                <div className="grid grid-cols-2 gap-2">
+              <div>
+                <h4 className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-wide">Моя доступность</h4>
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
                   {slotsConfig.map(slot => {
                     const isActive = mySlots.includes(slot.id);
                     return (
                       <button key={slot.id} onClick={() => toggleSlot(slot.id)} disabled={isLoading}
-                        className={`p-3 rounded-xl font-bold transition-all border text-sm ${
+                        className={`p-3 rounded-xl font-medium transition-all text-sm border ${
                           isActive 
-                            ? 'bg-gradient-to-r from-red-600 to-amber-500 border-transparent text-white shadow-lg' 
-                            : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-amber-500 hover:border-amber-500/50'
+                            ? 'bg-blue-50 border-blue-200 text-blue-700 shadow-sm' 
+                            : 'bg-white border-gray-200 text-gray-600 hover:border-blue-300 hover:bg-blue-50/50'
                         }`}
                       >
                         {slot.label}
@@ -398,21 +410,21 @@ function CalendarView({ userId, allProfiles }) {
 
               {/* Карточка 2: Друзья */}
               <div>
-                <h4 className="text-xs font-bold text-zinc-400 mb-3 uppercase tracking-wider pl-1">Кто из друзей свободен</h4>
+                <h4 className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-wide">Кто из друзей свободен</h4>
                 <div className="space-y-2">
                   {slotsConfig.map(slot => {
                     const people = friendsAvail[slot.id] || [];
                     return (
-                      <div key={slot.id} className="bg-zinc-950 p-3 rounded-xl flex items-center justify-between border border-zinc-800/50">
-                        <span className="text-zinc-500 font-bold text-xs w-1/4">{slot.label.split(' ')[0]}</span>
-                        <div className="flex flex-wrap gap-1.5 justify-end w-3/4">
+                      <div key={slot.id} className="bg-gray-50 p-3 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between border border-gray-100 gap-2">
+                        <span className="text-gray-600 font-medium text-sm">{slot.label.split(' ')[0]}</span>
+                        <div className="flex flex-wrap gap-1.5 sm:justify-end">
                           {people.length > 0
                             ? people.map((name, i) => (
-                                <span key={i} className={`font-medium text-[10px] px-2 py-1 rounded-md border ${getUserBadgeClass(name)}`}>
+                                <span key={i} className={`font-medium text-xs px-2.5 py-1 rounded-full border ${getUserBadgeClass(name)}`}>
                                   {name}
                                 </span>
                               ))
-                            : <span className="text-zinc-700 text-[10px] italic">Пока никого</span>}
+                            : <span className="text-gray-400 text-xs italic">Пока никого</span>}
                         </div>
                       </div>
                     );
@@ -420,11 +432,11 @@ function CalendarView({ userId, allProfiles }) {
                 </div>
               </div>
 
-              {/* Карточка 3: Ивенты и Долги */}
+              {/* Карточка 3: Ивенты */}
               <div>
-                <h4 className="text-xs font-bold text-zinc-400 mb-3 uppercase tracking-wider pl-1">Планы на этот день</h4>
+                <h4 className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-wide">Планы на этот день</h4>
                 {dayEvents.length === 0 ? (
-                  <p className="text-zinc-600 text-sm italic bg-zinc-950 p-4 rounded-xl border border-zinc-800/50 text-center">Запланированных встреч нет.</p>
+                  <p className="text-gray-500 text-sm italic bg-gray-50 p-4 rounded-xl border border-gray-100 text-center">Запланированных встреч нет.</p>
                 ) : (
                   <div className="space-y-4">
                     {dayEvents.map(ev => {
@@ -433,36 +445,36 @@ function CalendarView({ userId, allProfiles }) {
                       const expenses = ev.expenses || [];
 
                       return (
-                        <div key={ev.id} className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl">
-                          <div className="flex justify-between items-start mb-4">
+                        <div key={ev.id} className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm">
+                          <div className="flex justify-between items-start mb-3">
                             <div>
-                              <h5 className="font-bold text-amber-400 text-lg">{ev.title}</h5>
-                              <p className="text-xs text-zinc-500 mt-1">Организатор: <span className={getUserTextClass(ev.profiles?.display_name)}>{ev.profiles?.display_name}</span></p>
-                              <p className="text-xs text-zinc-500 mt-0.5">Участников: <span className="text-zinc-300 font-bold">{participantsCount}</span></p>
+                              <h5 className="font-semibold text-gray-900 text-lg">{ev.title}</h5>
+                              <p className="text-xs text-gray-500 mt-1">Организатор: <span className={getUserTextClass(ev.profiles?.display_name)}>{ev.profiles?.display_name}</span></p>
+                              <p className="text-xs text-gray-500 mt-0.5">Участников: <span className="text-gray-700 font-medium">{participantsCount}</span></p>
                             </div>
                             <button
                               onClick={() => toggleEventSubscribe(ev.id, isSubscribed)}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                              className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors border ${
                                 isSubscribed 
-                                  ? 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:bg-zinc-700' 
-                                  : 'bg-emerald-600/20 border-emerald-500/50 text-emerald-400 hover:bg-emerald-600/40'
+                                  ? 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50' 
+                                  : 'bg-blue-600 border-transparent text-white hover:bg-blue-700'
                               }`}
                             >
                               {isSubscribed ? 'Слиться' : 'Я иду!'}
                             </button>
                           </div>
 
-                          {/* Блок трат привязанный к ивенту */}
+                          {/* Траты */}
                           {expenses.length > 0 && (
-                            <div className="mt-3 pt-3 border-t border-zinc-800/50">
-                              <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Связанные траты:</span>
-                              <div className="mt-2 space-y-1.5">
+                            <div className="mt-3 pt-3 border-t border-gray-100">
+                              <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Связанные траты:</span>
+                              <div className="mt-2 space-y-2">
                                 {expenses.map(exp => (
-                                  <div key={exp.id} className="flex justify-between items-center text-xs bg-zinc-900/50 p-2 rounded-lg">
-                                    <span className="text-zinc-400 truncate max-w-[60%]">
+                                  <div key={exp.id} className="flex justify-between items-center text-xs bg-gray-50 p-2 rounded-md">
+                                    <span className="text-gray-600 truncate max-w-[60%]">
                                       {exp.description} <span className={`font-medium ${getUserTextClass(allProfiles[exp.payer_id])}`}>({allProfiles[exp.payer_id]})</span>
                                     </span>
-                                    <span className="text-rose-400 font-bold">{exp.amount} ₽</span>
+                                    <span className="text-gray-900 font-medium">{exp.amount} ₽</span>
                                   </div>
                                 ))}
                               </div>
@@ -484,23 +496,19 @@ function CalendarView({ userId, allProfiles }) {
 }
 
 // ================= ИВЕНТЫ =================
-function EventsView({ userId }) {
+function EventsView({ userId, inputClass }) {
   const [events, setEvents] = React.useState([]);
   const [title, setTitle] = React.useState('');
   const [date, setDate] = React.useState(getLocalToday());
 
   const fetchEvents = async () => {
-    // ЯВНОЕ УКАЗАНИЕ СВЯЗИ profiles!events_owner_id_fkey
     const { data, error } = await supabase
       .from('events')
       .select(`id, title, event_date, owner_id, profiles!events_owner_id_fkey(display_name), event_participants(user_id)`)
       .order('event_date', { ascending: true })
       .gte('event_date', getLocalToday()); 
       
-    if (error) {
-      console.error('Ошибка загрузки ивентов:', error);
-    }
-    
+    if (error) console.error('Ошибка загрузки ивентов:', error);
     if (data) setEvents(data);
   };
 
@@ -536,39 +544,53 @@ function EventsView({ userId }) {
 
   return (
     <div className="space-y-6">
-      <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 shadow-xl">
-        <h2 className="text-xl font-bold mb-4 text-amber-500">Запланировать встречу</h2>
-        <form onSubmit={createEvent} className="flex flex-col sm:flex-row gap-3">
-          <input type="text" placeholder="Название (напр. Шашлыки)" value={title} onChange={e => setTitle(e.target.value)} required className="flex-1 bg-zinc-950 p-3 rounded-xl border border-zinc-800 focus:outline-none focus:border-amber-500 text-white" />
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} required className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 focus:outline-none focus:border-amber-500 text-white" />
-          <button type="submit" className="bg-gradient-to-r from-red-600 to-amber-500 hover:from-red-500 hover:to-amber-400 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-red-900/20">Добавить</button>
+      <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+        <h2 className="text-lg font-medium text-gray-900 mb-5">Запланировать встречу</h2>
+        <form onSubmit={createEvent} className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+          <div className="w-full sm:flex-1">
+            <label className="block text-xs font-medium text-gray-500 mb-1 ml-1">Название</label>
+            <input type="text" placeholder="Напр. Шашлыки" value={title} onChange={e => setTitle(e.target.value)} required className={inputClass} />
+          </div>
+          <div className="w-full sm:w-auto">
+            <label className="block text-xs font-medium text-gray-500 mb-1 ml-1">Дата</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} required className={inputClass} />
+          </div>
+          <div className="w-full sm:w-auto sm:pt-5">
+            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-md font-medium shadow-sm transition-colors">
+              Добавить
+            </button>
+          </div>
         </form>
       </div>
 
-      <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 shadow-xl">
-        <h2 className="text-xl font-bold mb-4 text-zinc-200">Ближайшие ивенты</h2>
-        <div className="space-y-4">
-          {events.length === 0 && <p className="text-zinc-500 text-sm italic">Ивентов пока нет.</p>}
+      <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+        <h2 className="text-lg font-medium text-gray-900 mb-5">Ближайшие события</h2>
+        <div className="space-y-3">
+          {events.length === 0 && <p className="text-gray-500 text-sm">Нет запланированных событий.</p>}
           {events.map(ev => {
             const participantsCount = ev.event_participants?.length || 0;
             const isSubscribed = ev.event_participants?.some(p => p.user_id === userId);
 
             return (
-              <div key={ev.id} className="bg-zinc-950 p-5 rounded-xl border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div key={ev.id} className="bg-gray-50 p-4 rounded-xl border border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors hover:bg-white hover:border-gray-200">
                 <div>
                   <div className="flex items-center gap-3 mb-1">
-                    <h3 className="font-extrabold text-zinc-100 text-lg">{ev.title}</h3>
-                    <span className="text-amber-400 font-bold bg-amber-950/30 px-2 py-1 rounded text-xs border border-amber-900/30">{formatReadableDate(ev.event_date)}</span>
+                    <h3 className="font-semibold text-gray-900">{ev.title}</h3>
+                    <span className="bg-blue-100 text-blue-700 font-medium px-2 py-0.5 rounded text-xs">{formatReadableDate(ev.event_date)}</span>
                   </div>
-                  <p className="text-xs text-zinc-500">Орг: <span className={getUserTextClass(ev.profiles?.display_name)}>{ev.profiles?.display_name}</span> • Идут: <span className="text-zinc-300 font-bold">{participantsCount} чел.</span></p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Орг: <span className={`font-medium ${getUserTextClass(ev.profiles?.display_name)}`}>{ev.profiles?.display_name}</span> 
+                    <span className="mx-2">•</span> 
+                    Участников: <span className="text-gray-700 font-medium">{participantsCount}</span>
+                  </p>
                 </div>
                 
                 <button 
                   onClick={() => toggleSubscribe(ev.id, isSubscribed)}
-                  className={`px-4 py-2 rounded-lg font-bold text-sm transition-all border ${
+                  className={`px-5 py-2 rounded-full font-medium text-sm transition-colors border w-full sm:w-auto ${
                     isSubscribed 
-                      ? 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700 hover:text-white' 
-                      : 'bg-emerald-600/20 border-emerald-500/50 text-emerald-400 hover:bg-emerald-600 hover:text-white'
+                      ? 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50' 
+                      : 'bg-blue-600 border-transparent text-white hover:bg-blue-700 shadow-sm'
                   }`}
                 >
                   {isSubscribed ? 'Слиться' : 'Я иду!'}
@@ -583,7 +605,7 @@ function EventsView({ userId }) {
 }
 
 // ================= ДОЛГИ И ТРАТЫ =================
-function DebtsView({ userId, allProfiles }) {
+function DebtsView({ userId, allProfiles, inputClass }) {
   const [events, setEvents] = React.useState([]);
   
   const [eventId, setEventId] = React.useState('');
@@ -596,24 +618,6 @@ function DebtsView({ userId, allProfiles }) {
   const loadData = async () => {
     const { data: evs } = await supabase.from('events').select('id, title').order('event_date', { ascending: false });
     if (evs) setEvents(evs);
-
-    // Временно скрываем логику подсчета и отображения общего баланса
-    /*
-    const { data: expenses } = await supabase.from('expenses').select('payer_id, amount, expense_splits(user_id, amount)');
-    if (expenses) {
-      const calc = {};
-      Object.keys(allProfiles).forEach(id => calc[id] = { id, name: allProfiles[id], total: 0 });
-      expenses.forEach(ex => {
-        const cost = parseFloat(ex.amount);
-        if (calc[ex.payer_id]) calc[ex.payer_id].total += cost;
-        ex.expense_splits.forEach(sp => {
-          if (calc[sp.user_id]) calc[sp.user_id].total -= parseFloat(sp.amount);
-        });
-      });
-      const result = Object.values(calc).sort((a,b) => b.total - a.total).filter(u => Math.abs(u.total) > 0.01);
-      setBalances(result);
-    }
-    */
   };
 
   React.useEffect(() => { loadData(); }, [allProfiles]);
@@ -669,37 +673,46 @@ function DebtsView({ userId, allProfiles }) {
 
   return (
     <div className="space-y-6">
-      <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 shadow-xl">
-        <h2 className="text-xl font-bold mb-4 text-amber-500">Добавить трату</h2>
+      <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+        <h2 className="text-lg font-medium text-gray-900 mb-5">Добавить трату</h2>
         <form onSubmit={addExpense} className="space-y-4">
-          <select value={eventId} onChange={handleEventChange} required className="w-full bg-zinc-950 p-3 rounded-xl border border-zinc-800 focus:outline-none focus:border-amber-500 text-white">
-            <option value="">Сначала выберите ивент...</option>
-            {events.map(ev => <option key={ev.id} value={ev.id}>{ev.title}</option>)}
-          </select>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1 ml-1">К какому событию привязать?</label>
+            <select value={eventId} onChange={handleEventChange} required className={inputClass}>
+              <option value="">Выберите событие...</option>
+              {events.map(ev => <option key={ev.id} value={ev.id}>{ev.title}</option>)}
+            </select>
+          </div>
           
-          <div className="flex gap-3">
-            <input type="number" step="0.01" placeholder="Сумма (₽)" value={amount} onChange={e => setAmount(e.target.value)} required disabled={!eventId} className="w-1/3 bg-zinc-950 p-3 rounded-xl border border-zinc-800 focus:outline-none focus:border-amber-500 text-white disabled:opacity-50" />
-            <input type="text" placeholder="За что? (напр. Еда)" value={desc} onChange={e => setDesc(e.target.value)} required disabled={!eventId} className="w-2/3 bg-zinc-950 p-3 rounded-xl border border-zinc-800 focus:outline-none focus:border-amber-500 text-white disabled:opacity-50" />
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="w-full sm:w-1/3">
+              <label className="block text-xs font-medium text-gray-500 mb-1 ml-1">Сумма (₽)</label>
+              <input type="number" step="0.01" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} required disabled={!eventId} className={`${inputClass} disabled:bg-gray-50 disabled:text-gray-400`} />
+            </div>
+            <div className="w-full sm:w-2/3">
+              <label className="block text-xs font-medium text-gray-500 mb-1 ml-1">Описание</label>
+              <input type="text" placeholder="Напр. Пицца и напитки" value={desc} onChange={e => setDesc(e.target.value)} required disabled={!eventId} className={`${inputClass} disabled:bg-gray-50 disabled:text-gray-400`} />
+            </div>
           </div>
 
           {eventId && (
-            <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800/50 mt-4 animate-fade-in">
-              <div className="flex justify-between items-center mb-3">
-                <h4 className="text-sm font-bold text-zinc-400">На кого делим? (по {splitPreview} ₽)</h4>
-                <button type="button" onClick={toggleAllUsers} className="text-xs text-amber-500 hover:text-amber-400 font-bold transition-colors">
+            <div className="bg-gray-50 p-5 rounded-xl border border-gray-100 mt-4 animate-fade-in">
+              <div className="flex justify-between items-center mb-4 border-b border-gray-200 pb-2">
+                <h4 className="text-sm font-medium text-gray-700">На кого делим чек? <span className="text-gray-500 font-normal">(по {splitPreview} ₽)</span></h4>
+                <button type="button" onClick={toggleAllUsers} className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors">
                   {splitUsers.length === Object.keys(allProfiles).length ? 'Снять выделение' : 'Выбрать всех'}
                 </button>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 mt-2">
                 {Object.entries(allProfiles).map(([uid, name]) => {
                   const isChecked = splitUsers.includes(uid);
                   return (
                     <button 
                       type="button" key={uid} onClick={() => toggleSplitUser(uid)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+                      className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${
                         isChecked 
-                          ? 'bg-amber-500/20 border-amber-500/50 text-amber-400' 
-                          : `bg-zinc-900 border-zinc-800 hover:text-zinc-300 ${getUserTextClass(name)}`
+                          ? 'bg-blue-100 border-blue-200 text-blue-800' 
+                          : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-100'
                       }`}
                     >
                       {isChecked ? '✓ ' : '+ '}{name}
@@ -710,19 +723,13 @@ function DebtsView({ userId, allProfiles }) {
             </div>
           )}
 
-          <button type="submit" disabled={!eventId} className="w-full bg-gradient-to-r from-red-600 to-amber-500 hover:from-red-500 hover:to-amber-400 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-red-900/20 disabled:opacity-50">
-            Сохранить долг
-          </button>
+          <div className="pt-2">
+            <button type="submit" disabled={!eventId} className="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-md font-medium shadow-sm transition-colors disabled:opacity-50 disabled:hover:bg-blue-600">
+              Сохранить долг
+            </button>
+          </div>
         </form>
       </div>
-
-      {/* Блок с балансом временно закомментирован и скрыт */}
-      {/* 
-      <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 shadow-xl opacity-50">
-        <h2 className="text-xl font-bold mb-2 text-zinc-200">Общий баланс компании</h2>
-        <p className="text-zinc-500 text-sm mb-6">Блок временно скрыт в разработке.</p>
-      </div> 
-      */}
     </div>
   );
 }
