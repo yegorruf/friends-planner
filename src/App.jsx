@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
 
-// Утилита для получения локальной даты в формате YYYY-MM-DD
 const getLocalToday = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-// Утилита для красивого отображения даты (например, "24 июля 2026")
 const formatReadableDate = (dateStr) => {
   if (!dateStr) return '';
   const [year, month, day] = dateStr.split('-');
@@ -15,7 +13,6 @@ const formatReadableDate = (dateStr) => {
   return `${parseInt(day)} ${months[parseInt(month) - 1]} ${year}`;
 };
 
-// Утилиты для генерации уникального цвета пользователя (Светлая тема / Material)
 const getUserBadgeClass = (name) => {
   if (!name) return 'bg-gray-100 border-gray-200 text-gray-500';
   const palettes = [
@@ -42,6 +39,7 @@ const getUserTextClass = (name) => {
 export default function App() {
   const [session, setSession] = useState(null);
   const [profiles, setProfiles] = useState({});
+  const [isAdmin, setIsAdmin] = useState(false); // Добавили состояние админа
   
   const [isLoginMode, setIsLoginMode] = useState(true);
   const [login, setLogin] = useState('');
@@ -62,8 +60,16 @@ export default function App() {
       supabase.from('profiles').select('*').then(({ data }) => {
         if (data) {
           const profMap = {};
-          data.forEach(p => profMap[p.id] = p.display_name);
+          let adminStatus = false;
+          data.forEach(p => {
+            profMap[p.id] = p.display_name;
+            // Проверяем, является ли текущий пользователь админом
+            if (p.id === session.user.id && p.is_admin === true) {
+              adminStatus = true;
+            }
+          });
           setProfiles(profMap);
+          setIsAdmin(adminStatus);
         }
       });
     }
@@ -83,11 +89,12 @@ export default function App() {
       const { data, error } = await supabase.auth.signUp({ email, password });
       
       if (error) {
-        if (error.message.includes('already registered')) return alert('Этот логин уже занят! Придумайте другой.');
+        if (error.message.includes('already registered')) return alert('Этот логин уже занят!');
         return alert(`Ошибка регистрации: ${error.message}`);
       }
 
       if (data.user) {
+        // По умолчанию is_admin не передаем (он станет false в БД)
         const { error: profileError } = await supabase
           .from('profiles')
           .insert([{ id: data.user.id, login: cleanLogin, display_name: displayName.trim() }]);
@@ -103,7 +110,6 @@ export default function App() {
     }
   };
 
-  // Единый стиль инпутов
   const inputBaseClass = "w-full bg-white rounded-md p-3 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors text-gray-800 placeholder-gray-400 shadow-sm";
 
   if (!session) {
@@ -150,13 +156,23 @@ export default function App() {
     );
   }
 
+  // Формируем вкладки динамически, чтобы добавить админку только избранным
+  const navTabs = [
+    { id: 'calendar', name: 'Календарь' },
+    { id: 'events', name: 'События' },
+    { id: 'debts', name: 'Долги' }
+  ];
+  if (isAdmin) {
+    navTabs.push({ id: 'admin', name: '👑 Админка' });
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 pb-12 font-sans selection:bg-blue-200">
       <header className="bg-white border-b border-gray-200 p-4 sticky top-0 z-20 shadow-sm">
         <div className="max-w-4xl mx-auto flex justify-between items-center">
           <span className="font-bold text-blue-600 text-xl tracking-tight flex items-center gap-2">
             <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20a2 2 0 002 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zM9 14H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2z"/></svg>
-            Friend Planner
+            Friend Planner {isAdmin && <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded ml-2">ADMIN</span>}
           </span>
           <div className="flex items-center gap-4">
             <div className="hidden sm:flex items-center gap-2">
@@ -174,13 +190,9 @@ export default function App() {
         </div>
       </header>
 
-      <nav className="max-w-4xl mx-auto flex p-4 justify-center sm:justify-start">
-        <div className="bg-white border border-gray-200 rounded-full p-1 flex shadow-sm w-full sm:w-auto">
-          {[
-            { id: 'calendar', name: 'Календарь' },
-            { id: 'events', name: 'События' },
-            { id: 'debts', name: 'Долги' },
-          ].map(tab => (
+      <nav className="max-w-4xl mx-auto flex p-4 justify-center sm:justify-start overflow-x-auto">
+        <div className="bg-white border border-gray-200 rounded-full p-1 flex shadow-sm min-w-max">
+          {navTabs.map(tab => (
             <button
               key={tab.id} onClick={() => setActiveTab(tab.id)}
               className={`flex-1 sm:flex-none px-6 py-2 rounded-full text-sm font-medium transition-colors ${
@@ -199,6 +211,7 @@ export default function App() {
         {activeTab === 'calendar' && <CalendarView userId={session.user.id} allProfiles={profiles} inputClass={inputBaseClass} />}
         {activeTab === 'events' && <EventsView userId={session.user.id} inputClass={inputBaseClass} />}
         {activeTab === 'debts' && <DebtsView userId={session.user.id} allProfiles={profiles} inputClass={inputBaseClass} />}
+        {activeTab === 'admin' && isAdmin && <AdminView allProfiles={profiles} />}
       </main>
     </div>
   );
@@ -207,14 +220,11 @@ export default function App() {
 // ================= КАЛЕНДАРЬ + МОДАЛКА =================
 function CalendarView({ userId, allProfiles }) {
   const [currentMonth, setCurrentMonth] = React.useState(new Date());
-  
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [selectedDate, setSelectedDate] = React.useState(getLocalToday());
-  
   const [mySlots, setMySlots] = React.useState([]);
   const [friendsAvail, setFriendsAvail] = React.useState({ morning: [], afternoon: [], evening: [], night: [] });
   const [dayEvents, setDayEvents] = React.useState([]);
-  
   const [monthStats, setMonthStats] = React.useState({});
   const [monthEvents, setMonthEvents] = React.useState({}); 
   const [isLoading, setIsLoading] = React.useState(false);
@@ -336,7 +346,6 @@ function CalendarView({ userId, allProfiles }) {
 
   return (
     <div className="space-y-6">
-      
       <div className="bg-white p-4 sm:p-6 rounded-2xl border border-gray-100 shadow-sm">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-medium text-gray-800 hidden sm:block">Общий календарь</h2>
@@ -379,15 +388,12 @@ function CalendarView({ userId, allProfiles }) {
       {isModalOpen && (
         <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col relative animate-fade-in border border-gray-100">
-            
             <div className="sticky top-0 bg-white/95 backdrop-blur-md p-5 border-b border-gray-100 flex justify-between items-center z-10 rounded-t-2xl">
               <h3 className="text-xl font-medium text-gray-900">{formatReadableDate(selectedDate)}</h3>
               <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
             </div>
 
             <div className="p-5 space-y-8">
-              
-              {/* Карточка 1: Выбор слотов */}
               <div>
                 <h4 className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-wide">Моя доступность</h4>
                 <div className="grid grid-cols-2 gap-2 sm:gap-3">
@@ -408,7 +414,6 @@ function CalendarView({ userId, allProfiles }) {
                 </div>
               </div>
 
-              {/* Карточка 2: Друзья */}
               <div>
                 <h4 className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-wide">Кто из друзей свободен</h4>
                 <div className="space-y-2">
@@ -432,7 +437,6 @@ function CalendarView({ userId, allProfiles }) {
                 </div>
               </div>
 
-              {/* Карточка 3: Ивенты */}
               <div>
                 <h4 className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-wide">Планы на этот день</h4>
                 {dayEvents.length === 0 ? (
@@ -463,8 +467,6 @@ function CalendarView({ userId, allProfiles }) {
                               {isSubscribed ? 'Слиться' : 'Я иду!'}
                             </button>
                           </div>
-
-                          {/* Траты */}
                           {expenses.length > 0 && (
                             <div className="mt-3 pt-3 border-t border-gray-100">
                               <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Связанные траты:</span>
@@ -486,7 +488,6 @@ function CalendarView({ userId, allProfiles }) {
                   </div>
                 )}
               </div>
-
             </div>
           </div>
         </div>
@@ -607,13 +608,10 @@ function EventsView({ userId, inputClass }) {
 // ================= ДОЛГИ И ТРАТЫ =================
 function DebtsView({ userId, allProfiles, inputClass }) {
   const [events, setEvents] = React.useState([]);
-  
   const [eventId, setEventId] = React.useState('');
   const [amount, setAmount] = React.useState('');
   const [desc, setDesc] = React.useState('');
   const [splitUsers, setSplitUsers] = React.useState([]); 
-  
-  // const [balances, setBalances] = React.useState([]);
 
   const loadData = async () => {
     const { data: evs } = await supabase.from('events').select('id, title').order('event_date', { ascending: false });
@@ -729,6 +727,32 @@ function DebtsView({ userId, allProfiles, inputClass }) {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+// ================= АДМИН ПАНЕЛЬ =================
+function AdminView({ allProfiles }) {
+  return (
+    <div className="space-y-6">
+      <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+        <h2 className="text-lg font-medium text-gray-900 mb-2">👑 Панель администратора</h2>
+        <p className="text-sm text-gray-500 mb-6">Список всех зарегистрированных пользователей.</p>
+        
+        <div className="space-y-3">
+          {Object.entries(allProfiles).map(([id, name]) => (
+            <div key={id} className="flex justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-100 transition-colors hover:bg-gray-100">
+              <div className="flex items-center gap-3">
+                <span className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${getUserBadgeClass(name)}`}>
+                  {name.charAt(0).toUpperCase()}
+                </span>
+                <span className="font-medium text-gray-800">{name}</span>
+              </div>
+              <span className="text-xs text-gray-400 font-mono hidden sm:block">{id}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
