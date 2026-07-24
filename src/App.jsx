@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
 
+// Утилита для получения локальной даты в формате YYYY-MM-DD
 const getLocalToday = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+// Утилита для красивого отображения даты (например, "24 июля 2026")
 const formatReadableDate = (dateStr) => {
   if (!dateStr) return '';
   const [year, month, day] = dateStr.split('-');
@@ -13,6 +15,7 @@ const formatReadableDate = (dateStr) => {
   return `${parseInt(day)} ${months[parseInt(month) - 1]} ${year}`;
 };
 
+// Утилиты для генерации уникального цвета пользователя
 const getUserBadgeClass = (name) => {
   if (!name) return 'bg-gray-100 border-gray-200 text-gray-500';
   const palettes = [
@@ -39,7 +42,7 @@ const getUserTextClass = (name) => {
 export default function App() {
   const [session, setSession] = useState(null);
   const [profiles, setProfiles] = useState({});
-  const [isAdmin, setIsAdmin] = useState(false); // Добавили состояние админа
+  const [isAdmin, setIsAdmin] = useState(false);
   
   const [isLoginMode, setIsLoginMode] = useState(true);
   const [login, setLogin] = useState('');
@@ -63,7 +66,6 @@ export default function App() {
           let adminStatus = false;
           data.forEach(p => {
             profMap[p.id] = p.display_name;
-            // Проверяем, является ли текущий пользователь админом
             if (p.id === session.user.id && p.is_admin === true) {
               adminStatus = true;
             }
@@ -94,7 +96,6 @@ export default function App() {
       }
 
       if (data.user) {
-        // По умолчанию is_admin не передаем (он станет false в БД)
         const { error: profileError } = await supabase
           .from('profiles')
           .insert([{ id: data.user.id, login: cleanLogin, display_name: displayName.trim() }]);
@@ -156,7 +157,6 @@ export default function App() {
     );
   }
 
-  // Формируем вкладки динамически, чтобы добавить админку только избранным
   const navTabs = [
     { id: 'calendar', name: 'Календарь' },
     { id: 'events', name: 'События' },
@@ -172,7 +172,7 @@ export default function App() {
         <div className="max-w-4xl mx-auto flex justify-between items-center">
           <span className="font-bold text-blue-600 text-xl tracking-tight flex items-center gap-2">
             <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20a2 2 0 002 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zM9 14H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2z"/></svg>
-            Friend Planner {isAdmin && <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded ml-2">ADMIN</span>}
+            Friend Planner {isAdmin && <span className="text-xs bg-amber-100 text-amber-700 font-medium px-2 py-0.5 rounded ml-1">ADMIN</span>}
           </span>
           <div className="flex items-center gap-4">
             <div className="hidden sm:flex items-center gap-2">
@@ -211,7 +211,7 @@ export default function App() {
         {activeTab === 'calendar' && <CalendarView userId={session.user.id} allProfiles={profiles} inputClass={inputBaseClass} />}
         {activeTab === 'events' && <EventsView userId={session.user.id} inputClass={inputBaseClass} />}
         {activeTab === 'debts' && <DebtsView userId={session.user.id} allProfiles={profiles} inputClass={inputBaseClass} />}
-        {activeTab === 'admin' && isAdmin && <AdminView allProfiles={profiles} />}
+        {activeTab === 'admin' && isAdmin && <AdminView currentUserId={session.user.id} allProfiles={profiles} />}
       </main>
     </div>
   );
@@ -733,26 +733,170 @@ function DebtsView({ userId, allProfiles, inputClass }) {
 }
 
 // ================= АДМИН ПАНЕЛЬ =================
-function AdminView({ allProfiles }) {
+function AdminView({ currentUserId, allProfiles }) {
+  const [adminSubTab, setAdminSubTab] = React.useState('events'); // 'events', 'expenses', 'users'
+  const [eventsList, setEventsList] = React.useState([]);
+  const [expensesList, setExpensesList] = React.useState([]);
+  const [profilesList, setProfilesList] = React.useState([]);
+
+  const loadAdminData = async () => {
+    // 1. Загружаем абсолютно все события
+    const { data: evs } = await supabase
+      .from('events')
+      .select(`id, title, event_date, owner_id, profiles!events_owner_id_fkey(display_name)`)
+      .order('event_date', { ascending: false });
+    if (evs) setEventsList(evs);
+
+    // 2. Загружаем абсолютно все траты
+    const { data: exps } = await supabase
+      .from('expenses')
+      .select(`id, amount, description, payer_id, events(title)`)
+      .order('id', { ascending: false });
+    if (exps) setExpensesList(exps);
+
+    // 3. Загружаем профили
+    const { data: profs } = await supabase
+      .from('profiles')
+      .select(`id, display_name, login, is_admin`)
+      .order('display_name', { ascending: true });
+    if (profs) setProfilesList(profs);
+  };
+
+  React.useEffect(() => { loadAdminData(); }, []);
+
+  const handleDeleteEvent = async (id, title) => {
+    if (!confirm(`Удалить событие "${title}" и все связанные с ним записи?`)) return;
+    const { error } = await supabase.from('events').delete().eq('id', id);
+    if (error) alert('Ошибка удаления: ' + error.message);
+    else loadAdminData();
+  };
+
+  const handleDeleteExpense = async (id, desc) => {
+    if (!confirm(`Удалить трату "${desc}"?`)) return;
+    const { error } = await supabase.from('expenses').delete().eq('id', id);
+    if (error) alert('Ошибка удаления: ' + error.message);
+    else loadAdminData();
+  };
+
+  const handleToggleAdmin = async (id, currentStatus, name) => {
+    if (id === currentUserId) return alert('Вы не можете лишить админки самого себя!');
+    const newStatus = !currentStatus;
+    if (!confirm(`${newStatus ? 'Назначить' : 'Снять'} права админа для "${name}"?`)) return;
+
+    const { error } = await supabase.from('profiles').update({ is_admin: newStatus }).eq('id', id);
+    if (error) alert('Ошибка обновления прав: ' + error.message);
+    else loadAdminData();
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
-        <h2 className="text-lg font-medium text-gray-900 mb-2">👑 Панель администратора</h2>
-        <p className="text-sm text-gray-500 mb-6">Список всех зарегистрированных пользователей.</p>
-        
-        <div className="space-y-3">
-          {Object.entries(allProfiles).map(([id, name]) => (
-            <div key={id} className="flex justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-100 transition-colors hover:bg-gray-100">
-              <div className="flex items-center gap-3">
-                <span className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${getUserBadgeClass(name)}`}>
-                  {name.charAt(0).toUpperCase()}
-                </span>
-                <span className="font-medium text-gray-800">{name}</span>
-              </div>
-              <span className="text-xs text-gray-400 font-mono hidden sm:block">{id}</span>
-            </div>
-          ))}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <div>
+            <h2 className="text-lg font-medium text-gray-900">👑 Панель управления</h2>
+            <p className="text-xs text-gray-500 mt-0.5">Раздел только для администраторов</p>
+          </div>
+
+          {/* Подпереключатель админки */}
+          <div className="bg-gray-100 p-1 rounded-lg flex gap-1">
+            {[
+              { id: 'events', label: 'События' },
+              { id: 'expenses', label: 'Траты' },
+              { id: 'users', label: 'Юзеры' },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setAdminSubTab(tab.id)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  adminSubTab === tab.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
+
+        {/* 1. ВКЛАДКА СОБЫТИЙ */}
+        {adminSubTab === 'events' && (
+          <div className="space-y-3">
+            {eventsList.length === 0 && <p className="text-gray-500 text-sm italic">Событий пока нет.</p>}
+            {eventsList.map(ev => (
+              <div key={ev.id} className="flex items-center justify-between bg-gray-50 p-4 rounded-xl border border-gray-100">
+                <div>
+                  <h4 className="font-semibold text-gray-900 text-sm">{ev.title}</h4>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Дата: {formatReadableDate(ev.event_date)} • Орг: <span className={getUserTextClass(ev.profiles?.display_name)}>{ev.profiles?.display_name}</span>
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleDeleteEvent(ev.id, ev.title)}
+                  className="bg-red-50 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border border-red-200"
+                >
+                  Удалить
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* 2. ВКЛАДКА ТРАТ */}
+        {adminSubTab === 'expenses' && (
+          <div className="space-y-3">
+            {expensesList.length === 0 && <p className="text-gray-500 text-sm italic">Трат пока нет.</p>}
+            {expensesList.map(exp => (
+              <div key={exp.id} className="flex items-center justify-between bg-gray-50 p-4 rounded-xl border border-gray-100">
+                <div>
+                  <h4 className="font-semibold text-gray-900 text-sm">{exp.description} — <span className="text-blue-600">{exp.amount} ₽</span></h4>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Ивент: <span className="font-medium text-gray-700">{exp.events?.title || 'Без названия'}</span> • Платил: <span className={getUserTextClass(allProfiles[exp.payer_id])}>{allProfiles[exp.payer_id]}</span>
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleDeleteExpense(exp.id, exp.description)}
+                  className="bg-red-50 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border border-red-200"
+                >
+                  Удалить
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* 3. ВКЛАДКА ЮЗЕРОВ */}
+        {adminSubTab === 'users' && (
+          <div className="space-y-3">
+            {profilesList.map(p => (
+              <div key={p.id} className="flex items-center justify-between bg-gray-50 p-4 rounded-xl border border-gray-100">
+                <div className="flex items-center gap-3">
+                  <span className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${getUserBadgeClass(p.display_name)}`}>
+                    {p.display_name?.charAt(0).toUpperCase()}
+                  </span>
+                  <div>
+                    <h4 className="font-medium text-gray-800 text-sm flex items-center gap-2">
+                      {p.display_name} 
+                      {p.is_admin && <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded">ADMIN</span>}
+                    </h4>
+                    <p className="text-xs text-gray-400 font-mono">@{p.login}</p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => handleToggleAdmin(p.id, p.is_admin, p.display_name)}
+                  disabled={p.id === currentUserId}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors border ${
+                    p.is_admin 
+                      ? 'bg-gray-200 text-gray-700 border-gray-300 hover:bg-gray-300 disabled:opacity-50' 
+                      : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                  }`}
+                >
+                  {p.is_admin ? 'Снять админа' : 'Дать админа'}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
       </div>
     </div>
   );
