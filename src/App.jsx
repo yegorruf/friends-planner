@@ -486,13 +486,18 @@ function EventsView({ userId }) {
   const [title, setTitle] = React.useState('');
   const [date, setDate] = React.useState(getLocalToday());
 
-  const fetchEvents = async () => {
-    const { data } = await supabase
+const fetchEvents = async () => {
+    const { data, error } = await supabase
       .from('events')
       .select(`id, title, event_date, owner_id, profiles(display_name), event_participants(user_id)`)
       .order('event_date', { ascending: true })
       .gte('event_date', getLocalToday()); 
       
+    if (error) {
+      console.error('ОШИБКА ЗАГРУЗКИ ИВЕНТОВ:', error);
+      alert(`Ошибка БД: ${error.message}`);
+    }
+    
     if (data) setEvents(data);
   };
 
