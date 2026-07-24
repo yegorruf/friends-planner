@@ -363,6 +363,7 @@ function ProfileModal({ user, currentProfile, onClose, onSave, inputClass }) {
 }
 
 // ================= КАЛЕНДАРЬ =================
+// ================= КАЛЕНДАРЬ =================
 function CalendarView({ userId, fullProfiles }) {
   const [currentMonth, setCurrentMonth] = React.useState(new Date());
   const [isModalOpen, setIsModalOpen] = React.useState(false);
@@ -373,6 +374,11 @@ function CalendarView({ userId, fullProfiles }) {
   const [monthStats, setMonthStats] = React.useState({});
   const [monthEvents, setMonthEvents] = React.useState({}); 
   const [isLoading, setIsLoading] = React.useState(false);
+
+  // Стейты для свайпа
+  const [touchStart, setTouchStart] = React.useState(null);
+  const [touchEnd, setTouchEnd] = React.useState(null);
+  const minSwipeDistance = 50;
 
   const year = currentMonth.getFullYear();
   const month = currentMonth.getMonth();
@@ -439,7 +445,7 @@ function CalendarView({ userId, fullProfiles }) {
       const { data: evsData, error: evsError } = await supabase
         .from('events')
         .select(`
-          id, title, owner_id,
+          id, title, location, owner_id,
           event_participants(user_id),
           expenses(id, amount, description, payer_id)
         `)
@@ -484,6 +490,36 @@ function CalendarView({ userId, fullProfiles }) {
   const handleDayClick = (dateStr) => {
     setSelectedDate(dateStr);
     setIsModalOpen(true);
+  };
+
+  // ФУНКЦИИ СВАЙПА И ПЕРЕКЛЮЧЕНИЯ ДНЕЙ
+  const changeDay = (offset) => {
+    const [y, m, d] = selectedDate.split('-').map(Number);
+    const newDate = new Date(y, m - 1, d + offset);
+    const newDateStr = `${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}-${String(newDate.getDate()).padStart(2, '0')}`;
+    setSelectedDate(newDateStr);
+    
+    // Синхронизируем фон календаря, если перелистнули на другой месяц
+    if (newDate.getMonth() !== currentMonth.getMonth()) {
+      setCurrentMonth(new Date(newDate.getFullYear(), newDate.getMonth(), 1));
+    }
+  };
+
+  const onTouchStart = (e) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const onTouchMove = (e) => setTouchEnd(e.targetTouches[0].clientX);
+
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
+    
+    if (isLeftSwipe) changeDay(1);  // Свайп влево -> следующий день
+    if (isRightSwipe) changeDay(-1); // Свайп вправо -> предыдущий день
   };
 
   const slotsConfig = [
@@ -542,10 +578,22 @@ function CalendarView({ userId, fullProfiles }) {
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col relative animate-fade-in border border-gray-100">
+          {/* ДОБАВЛЕНЫ ОБРАБОТЧИКИ СВАЙПОВ СЮДА */}
+          <div 
+            className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col relative animate-fade-in border border-gray-100"
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
+          >
             <div className="sticky top-0 bg-white/95 backdrop-blur-md p-5 border-b border-gray-100 flex justify-between items-center z-10 rounded-t-2xl">
-              <h3 className="text-xl font-medium text-gray-900">{formatReadableDate(selectedDate)}</h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
+              {/* КНОПКИ ПЕРЕКЛЮЧЕНИЯ ДНЕЙ */}
+              <div className="flex items-center gap-3">
+                <button onClick={() => changeDay(-1)} className="text-gray-400 hover:text-gray-700 px-2 py-1 bg-gray-100 rounded-md transition-colors">&larr;</button>
+                <h3 className="text-xl font-medium text-gray-900 select-none min-w-[120px] text-center">{formatReadableDate(selectedDate)}</h3>
+                <button onClick={() => changeDay(1)} className="text-gray-400 hover:text-gray-700 px-2 py-1 bg-gray-100 rounded-md transition-colors">&rarr;</button>
+              </div>
+              
+              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-700 text-2xl leading-none px-2">&times;</button>
             </div>
 
             <div className="p-5 space-y-8">
@@ -610,11 +658,16 @@ function CalendarView({ userId, fullProfiles }) {
 
                       return (
                         <div key={ev.id} className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm">
-                          <div className="flex justify-between items-start mb-3">
+                          <div className="flex justify-between items-start mb-4">
                             <div>
                               <h5 className="font-semibold text-gray-900 text-lg">{ev.title}</h5>
-                              <p className="text-xs text-gray-500 mt-1">Организатор: <span className={`font-medium ${ownerStyle.text}`}>{ownerStyle.name}</span></p>
-                              <p className="text-xs text-gray-500 mt-0.5">Участников: <span className="text-gray-700 font-medium">{participantsCount}</span></p>
+                              {ev.location && (
+                                <p className="text-sm text-blue-600 font-medium mt-0.5 flex items-center gap-1">
+                                  <span>📍</span> {ev.location}
+                                </p>
+                              )}
+                              <p className="text-xs text-gray-500 mt-2">Орг: <span className={`font-medium ${ownerStyle.text}`}>{ownerStyle.name}</span></p>
+                              <p className="text-xs text-gray-500 mt-0.5">Идут: <span className="text-gray-700 font-medium">{participantsCount} чел.</span></p>
                             </div>
                             <button
                               onClick={() => toggleEventSubscribe(ev.id, isSubscribed)}
@@ -627,19 +680,25 @@ function CalendarView({ userId, fullProfiles }) {
                               {isSubscribed ? 'Слиться' : 'Я иду!'}
                             </button>
                           </div>
+
                           {expenses.length > 0 && (
                             <div className="mt-3 pt-3 border-t border-gray-100">
-                              <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Связанные траты:</span>
-                              <div className="mt-2 space-y-2">
+                              <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-2 block">Связанные траты:</span>
+                              <div className="space-y-2">
                                 {expenses.map(exp => {
                                   const payerProf = fullProfiles.find(p => p.id === exp.payer_id);
                                   const payerStyle = getProfileStyle(payerProf);
                                   return (
-                                    <div key={exp.id} className="flex justify-between items-center text-xs bg-gray-50 p-2 rounded-md">
-                                      <span className="text-gray-600 truncate max-w-[60%]">
-                                        {exp.description} <span className={`font-medium ${payerStyle.text}`}>({payerStyle.name})</span>
+                                    <div key={exp.id} className="flex justify-between items-center text-xs bg-gray-50 p-2.5 rounded-md border border-gray-100">
+                                      <div className="flex flex-col">
+                                        <span className="text-gray-700 font-medium">{exp.description}</span>
+                                        <span className="text-gray-500 text-[10px] mt-0.5">
+                                          Платил: <span className={payerStyle.text}>{payerStyle.name}</span>
+                                        </span>
+                                      </div>
+                                      <span className="text-gray-900 font-bold bg-white px-2 py-1 rounded shadow-sm border border-gray-200">
+                                        {exp.amount} BYN
                                       </span>
-                                      <span className="text-gray-900 font-medium">{exp.amount} BYN</span>
                                     </div>
                                   );
                                 })}
