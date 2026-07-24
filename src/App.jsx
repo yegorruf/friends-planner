@@ -41,7 +41,8 @@ export default function App() {
     
     // Очищаем логин от случайных пробелов
     const cleanLogin = login.trim().toLowerCase();
-    const email = `${cleanLogin}@app.local`;
+    // Используем реальный формат домена для прохождения валидации Supabase
+    const email = `${cleanLogin}@friendplanner.com`;
 
     if (isLoginMode) {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -178,7 +179,7 @@ function CalendarView({ userId, allProfiles }) {
   const month = currentMonth.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  // 1. Загрузка данных для всей сетки месяца
+  // 1. Загрузка данных для всей сетки месяца (без лишних перезагрузок)
   React.useEffect(() => {
     async function fetchMonthData() {
       const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
@@ -207,7 +208,7 @@ function CalendarView({ userId, allProfiles }) {
       }
     }
     fetchMonthData();
-  }, [year, month, daysInMonth, isModalOpen]); // Обновляем сетку, когда закрываем модалку
+  }, [year, month, daysInMonth]);
 
   // 2. Загрузка данных для конкретного дня (когда открыта модалка)
   React.useEffect(() => {
@@ -263,7 +264,7 @@ function CalendarView({ userId, allProfiles }) {
     } else {
       await supabase.from('event_participants').insert({ event_id: eventId, user_id: userId });
     }
-    // Быстрое локальное обновление стейта без лишнего запроса к БД
+    // Быстрое локальное обновление стейта
     setDayEvents(dayEvents.map(ev => {
       if (ev.id === eventId) {
         const newParticipants = isSubscribed 
@@ -484,12 +485,23 @@ function EventsView({ userId }) {
   };
 
   const toggleSubscribe = async (eventId, isSubscribed) => {
+    // 1. Отправляем запрос в фоне
     if (isSubscribed) {
       await supabase.from('event_participants').delete().match({ event_id: eventId, user_id: userId });
     } else {
       await supabase.from('event_participants').insert({ event_id: eventId, user_id: userId });
     }
-    fetchEvents();
+    
+    // 2. Мгновенно обновляем локальный стейт
+    setEvents(events.map(ev => {
+      if (ev.id === eventId) {
+        const newParticipants = isSubscribed 
+          ? ev.event_participants.filter(p => p.user_id !== userId)
+          : [...ev.event_participants, { user_id: userId }];
+        return { ...ev, event_participants: newParticipants };
+      }
+      return ev;
+    }));
   };
 
   return (
@@ -593,6 +605,15 @@ function DebtsView({ userId, allProfiles }) {
     else setSplitUsers([...splitUsers, uid]);
   };
 
+  const toggleAllUsers = () => {
+    const allIds = Object.keys(allProfiles);
+    if (splitUsers.length === allIds.length) {
+      setSplitUsers([]); // Сбрасываем выбор
+    } else {
+      setSplitUsers(allIds); // Выбираем всех
+    }
+  };
+
   const addExpense = async (e) => {
     e.preventDefault();
     if (splitUsers.length === 0) return alert('Выберите хотя бы одного человека для разделения траты!');
@@ -637,7 +658,12 @@ function DebtsView({ userId, allProfiles }) {
 
           {eventId && (
             <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800/50 mt-4">
-              <h4 className="text-sm font-bold text-zinc-400 mb-3">На кого делим? (по {splitPreview} на человека)</h4>
+              <div className="flex justify-between items-center mb-3">
+                <h4 className="text-sm font-bold text-zinc-400">На кого делим? (по {splitPreview} на человека)</h4>
+                <button type="button" onClick={toggleAllUsers} className="text-xs text-amber-500 hover:text-amber-400 font-bold transition-colors">
+                  {splitUsers.length === Object.keys(allProfiles).length ? 'Снять выделение' : 'Выбрать всех'}
+                </button>
+              </div>
               <div className="flex flex-wrap gap-2">
                 {Object.entries(allProfiles).map(([uid, name]) => {
                   const isChecked = splitUsers.includes(uid);
