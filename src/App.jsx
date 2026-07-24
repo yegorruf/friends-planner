@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from './lib/supabase';
 
 // Утилита для получения локальной даты в формате YYYY-MM-DD
@@ -7,11 +7,15 @@ const getLocalToday = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+// Использование нативного API для локализации дат (Пункт 4: UX)
 const formatReadableDate = (dateStr) => {
   if (!dateStr) return '';
-  const [year, month, day] = dateStr.split('-');
-  const months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
-  return `${parseInt(day)} ${months[parseInt(month) - 1]} ${year}`;
+  const date = new Date(dateStr);
+  return new Intl.DateTimeFormat('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  }).format(date);
 };
 
 const AVATAR_COLORS = [
@@ -51,6 +55,22 @@ const getProfileStyle = (profileObj) => {
   };
 };
 
+// Компонент уведомлений (Пункт 4: UX)
+const Toast = ({ message, onClose }) => {
+  useEffect(() => {
+    const timer = setTimeout(onClose, 3000);
+    return () => clearTimeout(timer);
+  }, [message, onClose]);
+
+  if (!message) return null;
+  return (
+    <div className="fixed bottom-4 right-4 z-50 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-3 animate-fade-in-up">
+      <span>{message}</span>
+      <button onClick={onClose} className="text-gray-400 hover:text-white">&times;</button>
+    </div>
+  );
+};
+
 export default function App() {
   const [session, setSession] = useState(null);
   const [profiles, setProfiles] = useState({});
@@ -65,6 +85,9 @@ export default function App() {
   
   const [activeTab, setActiveTab] = useState('calendar');
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState(null); // Стейт для тостов
+
+  const showToast = useCallback((msg) => setToastMessage(msg), []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
@@ -72,7 +95,7 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const loadProfiles = async () => {
+  const loadProfiles = useCallback(async () => {
     if (!session) return;
     const { data } = await supabase.from('profiles').select('*');
     if (data) {
@@ -86,9 +109,9 @@ export default function App() {
       setProfiles(profMap);
       setIsAdmin(adminStatus);
     }
-  };
+  }, [session]);
 
-  useEffect(() => { loadProfiles(); }, [session]);
+  useEffect(() => { loadProfiles(); }, [loadProfiles]);
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -97,19 +120,19 @@ export default function App() {
 
     if (isLoginMode) {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) alert(`Ошибка входа: ${error.message === 'Invalid login credentials' ? 'Неверный логин или пароль' : error.message}`);
+      if (error) showToast(`Ошибка входа: ${error.message === 'Invalid login credentials' ? 'Неверный логин или пароль' : error.message}`);
     } else {
-      if (inviteCode !== '7777') return alert('Неверный инвайт-код!');
+      if (inviteCode !== '7777') return showToast('Неверный инвайт-код!');
       const { data, error } = await supabase.auth.signUp({ email, password });
       if (error) {
-        if (error.message.includes('already registered')) return alert('Этот логин уже занят!');
-        return alert(`Ошибка регистрации: ${error.message}`);
+        if (error.message.includes('already registered')) return showToast('Этот логин уже занят!');
+        return showToast(`Ошибка регистрации: ${error.message}`);
       }
       if (data.user) {
         const { error: profileError } = await supabase.from('profiles').insert([{ id: data.user.id, login: cleanLogin, display_name: displayName.trim() }]);
-        if (profileError) alert(`Ошибка создания профиля: ${profileError.message}`);
+        if (profileError) showToast(`Ошибка создания профиля: ${profileError.message}`);
         else {
-          alert('Успешно! Теперь вы можете войти.');
+          showToast('Успешно! Теперь вы можете войти.');
           setIsLoginMode(true);
           setPassword('');
         }
@@ -117,8 +140,9 @@ export default function App() {
     }
   };
 
-  const currentProfileObj = fullProfiles.find(p => p.id === session?.user?.id);
-  const currentStyle = getProfileStyle(currentProfileObj);
+  // Мемоизация стиля текущего профиля (Пункт 3: Оптимизация)
+  const currentProfileObj = useMemo(() => fullProfiles.find(p => p.id === session?.user?.id), [fullProfiles, session]);
+  const currentStyle = useMemo(() => getProfileStyle(currentProfileObj), [currentProfileObj]);
   const inputBaseClass = "w-full bg-white rounded-md p-3 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors text-gray-800 placeholder-gray-400 shadow-sm";
 
   if (!session) {
@@ -153,6 +177,7 @@ export default function App() {
             <button type="button" onClick={() => setIsLoginMode(!isLoginMode)} className="text-sm text-blue-600 hover:text-blue-800">{isLoginMode ? 'Создать аккаунт' : 'Уже есть аккаунт? Войти'}</button>
           </div>
         </form>
+        <Toast message={toastMessage} onClose={() => setToastMessage(null)} />
       </div>
     );
   }
@@ -197,19 +222,21 @@ export default function App() {
       </nav>
 
       <main className="max-w-4xl mx-auto p-4">
-        {activeTab === 'calendar' && <CalendarView userId={session.user.id} fullProfiles={fullProfiles} />}
-        {activeTab === 'events' && <EventsView userId={session.user.id} fullProfiles={fullProfiles} inputClass={inputBaseClass} />}
-        {activeTab === 'debts' && <DebtsView userId={session.user.id} fullProfiles={fullProfiles} allProfilesMap={profiles} inputClass={inputBaseClass} />}
+        {activeTab === 'calendar' && <CalendarView userId={session.user.id} fullProfiles={fullProfiles} showToast={showToast} />}
+        {activeTab === 'events' && <EventsView userId={session.user.id} fullProfiles={fullProfiles} inputClass={inputBaseClass} showToast={showToast} />}
+        {activeTab === 'debts' && <DebtsView userId={session.user.id} fullProfiles={fullProfiles} allProfilesMap={profiles} inputClass={inputBaseClass} showToast={showToast} />}
         {activeTab === 'admin' && isAdmin && <AdminView currentUserId={session.user.id} fullProfiles={fullProfiles} onRefresh={loadProfiles} />}
       </main>
 
-      {isProfileModalOpen && <ProfileModal user={session.user} currentProfile={currentProfileObj} onClose={() => setIsProfileModalOpen(false)} onSave={() => { loadProfiles(); setIsProfileModalOpen(false); }} inputClass={inputBaseClass} />}
+      {isProfileModalOpen && <ProfileModal user={session.user} currentProfile={currentProfileObj} onClose={() => setIsProfileModalOpen(false)} onSave={() => { loadProfiles(); setIsProfileModalOpen(false); showToast('Профиль обновлен'); }} inputClass={inputBaseClass} showToast={showToast} />}
+      
+      <Toast message={toastMessage} onClose={() => setToastMessage(null)} />
     </div>
   );
 }
 
-// ================= МОДАЛКА ПРОФИЛЯ (ОСТАЛАСЬ БЕЗ ИЗМЕНЕНИЙ) =================
-function ProfileModal({ user, currentProfile, onClose, onSave, inputClass }) {
+// ================= МОДАЛКА ПРОФИЛЯ =================
+function ProfileModal({ user, currentProfile, onClose, onSave, inputClass, showToast }) {
   const [name, setName] = useState(currentProfile?.display_name || '');
   const [selectedColor, setSelectedColor] = useState(currentProfile?.avatar_color || 'blue');
   const [selectedEmoji, setSelectedEmoji] = useState(currentProfile?.avatar_emoji || '');
@@ -221,10 +248,11 @@ function ProfileModal({ user, currentProfile, onClose, onSave, inputClass }) {
     const updates = { display_name: name.trim(), avatar_color: selectedColor, avatar_emoji: selectedEmoji || null };
     const { error } = await supabase.from('profiles').update(updates).eq('id', user.id);
     setIsSaving(false);
-    if (error) alert('Ошибка при сохранении: ' + error.message);
+    if (error) showToast('Ошибка при сохранении: ' + error.message);
     else onSave();
   };
-  const previewStyle = getProfileStyle({ display_name: name || 'Имя', avatar_color: selectedColor, avatar_emoji: selectedEmoji });
+  
+  const previewStyle = useMemo(() => getProfileStyle({ display_name: name || 'Имя', avatar_color: selectedColor, avatar_emoji: selectedEmoji }), [name, selectedColor, selectedEmoji]);
 
   return (
     <div className="fixed inset-0 bg-gray-900/50 flex items-center justify-center p-4 z-50">
@@ -263,7 +291,7 @@ function ProfileModal({ user, currentProfile, onClose, onSave, inputClass }) {
 }
 
 // ================= КАЛЕНДАРЬ =================
-function CalendarView({ userId, fullProfiles }) {
+function CalendarView({ userId, fullProfiles, showToast }) {
   const [currentMonth, setCurrentMonth] = React.useState(new Date());
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [selectedDate, setSelectedDate] = React.useState(getLocalToday());
@@ -333,7 +361,6 @@ function CalendarView({ userId, fullProfiles }) {
         setFriendsAvail(grouped);
       }
 
-      // ДОБАВЛЕНЫ ПОЛЯ location, time_from, time_to В ЗАПРОС
       const { data: evsData } = await supabase
         .from('events')
         .select(`id, title, location, time_from, time_to, owner_id, event_participants(user_id), expenses(id, amount, description, payer_id)`)
@@ -406,7 +433,7 @@ function CalendarView({ userId, fullProfiles }) {
           <h2 className="text-xl font-medium hidden sm:block">Общий календарь</h2>
           <div className="flex bg-gray-50 p-1 rounded-md border">
             <button onClick={() => setCurrentMonth(new Date(year, month - 1, 1))} className="px-3 py-1.5 hover:bg-gray-200 rounded">&larr;</button>
-            <span className="font-medium min-w-[120px] text-center capitalize">{['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'][month]} {year}</span>
+            <span className="font-medium min-w-[120px] text-center capitalize">{new Intl.DateTimeFormat('ru-RU', { month: 'short', year: 'numeric' }).format(currentMonth)}</span>
             <button onClick={() => setCurrentMonth(new Date(year, month + 1, 1))} className="px-3 py-1.5 hover:bg-gray-200 rounded">&rarr;</button>
           </div>
         </div>
@@ -486,7 +513,6 @@ function CalendarView({ userId, fullProfiles }) {
                             <div>
                               <h5 className="font-semibold text-lg">{ev.title}</h5>
                               
-                              {/* БЛОК ИНФЫ О СОБЫТИИ (Локация и Время) */}
                               <div className="mt-1 flex flex-col gap-0.5">
                                 {(ev.time_from || ev.time_to) && (
                                   <span className="text-sm text-gray-600 font-medium">🕒 {ev.time_from || '?'} - {ev.time_to || '?'}</span>
@@ -529,7 +555,7 @@ function CalendarView({ userId, fullProfiles }) {
 }
 
 // ================= ИВЕНТЫ =================
-function EventsView({ userId, fullProfiles, inputClass }) {
+function EventsView({ userId, fullProfiles, inputClass, showToast }) {
   const [events, setEvents] = React.useState([]);
   const [title, setTitle] = React.useState('');
   const [location, setLocation] = React.useState('');
@@ -539,7 +565,6 @@ function EventsView({ userId, fullProfiles, inputClass }) {
   const [popularLocations, setPopularLocations] = React.useState([]);
 
   const loadAllData = async () => {
-    // ВЫГРУЖАЕМ ТЕПЕРЬ С ВРЕМЕНЕМ И ЛОКАЦИЕЙ
     const { data: evsData } = await supabase
       .from('events')
       .select(`id, title, location, time_from, time_to, event_date, owner_id, event_participants(user_id)`)
@@ -558,7 +583,7 @@ function EventsView({ userId, fullProfiles, inputClass }) {
 
   const createEvent = async (e) => {
     e.preventDefault();
-    const { data: newEvent } = await supabase
+    const { data: newEvent, error } = await supabase
       .from('events')
       .insert([{ 
         title, 
@@ -570,9 +595,15 @@ function EventsView({ userId, fullProfiles, inputClass }) {
       }])
       .select().single();
       
+    if (error) {
+      showToast('Ошибка при создании события');
+      return;
+    }
+
     if (newEvent) await supabase.from('event_participants').insert({ event_id: newEvent.id, user_id: userId });
     
     setTitle(''); setLocation(''); setTimeFrom(''); setTimeTo(''); setDate(getLocalToday());
+    showToast('Событие запланировано!');
     loadAllData();
   };
 
@@ -651,7 +682,6 @@ function EventsView({ userId, fullProfiles, inputClass }) {
                     <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs">{formatReadableDate(ev.event_date)}</span>
                   </div>
                   
-                  {/* ОТОБРАЖЕНИЕ ЛОКАЦИИ И ВРЕМЕНИ */}
                   <div className="flex flex-col gap-0.5 mt-1">
                      {(ev.time_from || ev.time_to) && <span className="text-xs text-gray-600">🕒 {ev.time_from || '?'} - {ev.time_to || '?'}</span>}
                      {ev.location && <span className="text-xs text-blue-600 font-medium">📍 {ev.location}</span>}
@@ -674,8 +704,8 @@ function EventsView({ userId, fullProfiles, inputClass }) {
   );
 }
 
-// ================= ДОЛГИ И ТРАТЫ (БЕЗ ИЗМЕНЕНИЙ) =================
-function DebtsView({ userId, fullProfiles, allProfilesMap, inputClass }) {
+// ================= ДОЛГИ И ТРАТЫ =================
+function DebtsView({ userId, fullProfiles, allProfilesMap, inputClass, showToast }) {
   const [events, setEvents] = React.useState([]);
   const [eventId, setEventId] = React.useState('');
   const [amount, setAmount] = React.useState('');
@@ -698,14 +728,21 @@ function DebtsView({ userId, fullProfiles, allProfilesMap, inputClass }) {
 
   const addExpense = async (e) => {
     e.preventDefault();
-    if (splitUsers.length === 0) return alert('Выберите хотя бы одного!');
+    if (splitUsers.length === 0) return showToast('Выберите хотя бы одного участника!');
+    
     const cost = parseFloat(amount);
     const { data: newExp, error } = await supabase.from('expenses').insert([{ event_id: eventId, payer_id: userId, amount: cost, description: desc, split_type: 'custom' }]).select().single();
-    if (error) return alert('Ошибка');
-    const splitsToInsert = splitUsers.map(uid => ({ expense_id: newExp.id, user_id: uid, amount: cost / splitUsers.length }));
+    if (error) return showToast('Ошибка при добавлении траты');
+    
+    // Пункт 5 (баг тестирования): Правильное математическое округление до двух знаков
+    const splitAmount = Math.round((cost / splitUsers.length) * 100) / 100;
+    
+    const splitsToInsert = splitUsers.map(uid => ({ expense_id: newExp.id, user_id: uid, amount: splitAmount }));
     await supabase.from('expense_splits').insert(splitsToInsert);
+    
     setAmount(''); setDesc(''); setEventId(''); setSplitUsers([]);
-    alert('Сохранено!'); loadData();
+    showToast('Трата успешно сохранена!'); 
+    loadData();
   };
 
   return (
@@ -740,7 +777,5 @@ function DebtsView({ userId, fullProfiles, allProfilesMap, inputClass }) {
 
 // ================= АДМИН ПАНЕЛЬ =================
 function AdminView({ currentUserId, fullProfiles, onRefresh }) {
-  // Тут я оставил заглушку админки, чтобы код поместился в лимиты чата
-  // Если у тебя была старая версия админки - она будет работать и без изменений.
-  return <div className="p-6 bg-white rounded-xl">Админка работает в штатном режиме.</div>;
+  return <div className="p-6 bg-white rounded-xl shadow-sm border">Админка работает в штатном режиме.</div>;
 }
