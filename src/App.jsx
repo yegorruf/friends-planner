@@ -1,9 +1,42 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
 
+// Утилита для получения локальной даты в формате YYYY-MM-DD
 const getLocalToday = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+// Утилита для красивого отображения даты (например, "24 июля 2026")
+const formatReadableDate = (dateStr) => {
+  if (!dateStr) return '';
+  const [year, month, day] = dateStr.split('-');
+  const months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+  return `${parseInt(day)} ${months[parseInt(month) - 1]} ${year}`;
+};
+
+// Утилиты для генерации уникального цвета пользователя на основе его имени
+const getUserBadgeClass = (name) => {
+  if (!name) return 'bg-zinc-800 border-zinc-700 text-zinc-400';
+  const palettes = [
+    'bg-rose-500/10 border-rose-500/20 text-rose-400',
+    'bg-blue-500/10 border-blue-500/20 text-blue-400',
+    'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
+    'bg-purple-500/10 border-purple-500/20 text-purple-400',
+    'bg-amber-500/10 border-amber-500/20 text-amber-400',
+    'bg-cyan-500/10 border-cyan-500/20 text-cyan-400',
+  ];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return palettes[Math.abs(hash) % palettes.length];
+};
+
+const getUserTextClass = (name) => {
+  if (!name) return 'text-zinc-400';
+  const colors = ['text-rose-400', 'text-blue-400', 'text-emerald-400', 'text-purple-400', 'text-amber-400', 'text-cyan-400'];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return colors[Math.abs(hash) % colors.length];
 };
 
 export default function App() {
@@ -38,10 +71,7 @@ export default function App() {
 
   const handleAuth = async (e) => {
     e.preventDefault();
-    
-    // Очищаем логин от случайных пробелов
     const cleanLogin = login.trim().toLowerCase();
-    // Используем реальный формат домена для прохождения валидации Supabase
     const email = `${cleanLogin}@friendplanner.com`;
 
     if (isLoginMode) {
@@ -121,7 +151,9 @@ export default function App() {
             FRIEND PLANNER
           </span>
           <div className="flex items-center gap-4">
-            <span className="text-zinc-400 text-sm hidden sm:block">{profiles[session.user.id]}</span>
+            <span className={`text-sm hidden sm:block font-bold ${getUserTextClass(profiles[session.user.id])}`}>
+              {profiles[session.user.id]}
+            </span>
             <button onClick={() => supabase.auth.signOut()} className="text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-4 py-2 rounded-lg font-medium transition-colors">
               Выйти
             </button>
@@ -170,7 +202,6 @@ function CalendarView({ userId, allProfiles }) {
   const [friendsAvail, setFriendsAvail] = React.useState({ morning: [], afternoon: [], evening: [], night: [] });
   const [dayEvents, setDayEvents] = React.useState([]);
   
-  // Данные для визуальной сетки месяца
   const [monthStats, setMonthStats] = React.useState({});
   const [monthEvents, setMonthEvents] = React.useState({}); 
   const [isLoading, setIsLoading] = React.useState(false);
@@ -179,7 +210,6 @@ function CalendarView({ userId, allProfiles }) {
   const month = currentMonth.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  // 1. Загрузка данных для всей сетки месяца (без лишних перезагрузок)
   React.useEffect(() => {
     async function fetchMonthData() {
       const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
@@ -210,7 +240,6 @@ function CalendarView({ userId, allProfiles }) {
     fetchMonthData();
   }, [year, month, daysInMonth]);
 
-  // 2. Загрузка данных для конкретного дня (когда открыта модалка)
   React.useEffect(() => {
     if (!isModalOpen) return;
 
@@ -228,7 +257,6 @@ function CalendarView({ userId, allProfiles }) {
         setFriendsAvail(grouped);
       }
 
-      // Загружаем ивенты, участников и траты на этот день
       const { data: evsData } = await supabase
         .from('events')
         .select(`
@@ -238,6 +266,7 @@ function CalendarView({ userId, allProfiles }) {
           expenses(id, amount, description, payer_id)
         `)
         .eq('event_date', selectedDate);
+        
       if (evsData) setDayEvents(evsData);
     }
     fetchDayData();
@@ -246,7 +275,6 @@ function CalendarView({ userId, allProfiles }) {
   const toggleSlot = async (slotId) => {
     if (isLoading) return;
     setIsLoading(true);
-
     if (mySlots.includes(slotId)) {
       await supabase.from('availability').delete().match({ user_id: userId, date: selectedDate, slot: slotId });
       setMySlots(mySlots.filter(s => s !== slotId));
@@ -254,7 +282,6 @@ function CalendarView({ userId, allProfiles }) {
       await supabase.from('availability').insert({ user_id: userId, date: selectedDate, slot: slotId });
       setMySlots([...mySlots, slotId]);
     }
-    
     setIsLoading(false);
   };
 
@@ -264,7 +291,6 @@ function CalendarView({ userId, allProfiles }) {
     } else {
       await supabase.from('event_participants').insert({ event_id: eventId, user_id: userId });
     }
-    // Быстрое локальное обновление стейта
     setDayEvents(dayEvents.map(ev => {
       if (ev.id === eventId) {
         const newParticipants = isSubscribed 
@@ -292,13 +318,11 @@ function CalendarView({ userId, allProfiles }) {
   const blanks = Array(firstDayIndex).fill(null);
   const days = Array.from({length: daysInMonth}, (_, i) => i + 1);
   const monthNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
-  const formatDayString = (d) => `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
   const todayStr = getLocalToday();
 
   return (
     <div className="space-y-6">
       
-      {/* СЕТКА КАЛЕНДАРЯ */}
       <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 shadow-xl">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-bold text-amber-500 hidden sm:block">Календарь</h2>
@@ -316,7 +340,7 @@ function CalendarView({ userId, allProfiles }) {
         <div className="grid grid-cols-7 gap-2">
           {blanks.map((_, i) => <div key={`blank-${i}`} />)}
           {days.map(day => {
-            const dateStr = formatDayString(day);
+            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             const isToday = dateStr === todayStr;
             const freeCount = monthStats[dateStr] || 0;
             const isCrowded = freeCount >= 3; 
@@ -325,40 +349,33 @@ function CalendarView({ userId, allProfiles }) {
             let btnClass = 'bg-zinc-950 text-zinc-300 hover:bg-zinc-800 border-2 border-transparent';
             if (isCrowded) btnClass = 'bg-amber-950/40 text-amber-400 border-2 border-amber-500/30 font-bold hover:bg-amber-900/50';
             
-            if (isToday) {
-              btnClass += ' ring-2 ring-amber-500/80 ring-offset-2 ring-offset-zinc-900 text-amber-300';
-            }
+            if (isToday) btnClass += ' ring-2 ring-amber-500/80 ring-offset-2 ring-offset-zinc-900 text-amber-300';
 
             return (
               <button key={day} onClick={() => handleDayClick(dateStr)} className={`relative p-2 h-12 rounded-xl text-sm transition-all duration-200 ${btnClass} flex flex-col items-center justify-center cursor-pointer`}>
                 <span>{day}</span>
-                {/* Точка ивента */}
-                {hasEvents && (
-                  <span className="absolute bottom-1.5 w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_5px_rgba(239,68,68,0.8)]"></span>
-                )}
+                {hasEvents && <span className="absolute bottom-1.5 w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_5px_rgba(239,68,68,0.8)]"></span>}
               </button>
             );
           })}
         </div>
       </div>
 
-      {/* МОДАЛКА */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col relative animate-fade-in">
             
-            {/* Header модалки */}
             <div className="sticky top-0 bg-zinc-900/95 p-5 border-b border-zinc-800 flex justify-between items-center z-10">
-              <h3 className="text-xl font-bold text-amber-500">{selectedDate}</h3>
+              <h3 className="text-xl font-bold text-white capitalize">{formatReadableDate(selectedDate)}</h3>
               <button onClick={() => setIsModalOpen(false)} className="text-zinc-500 hover:text-white text-3xl leading-none">&times;</button>
             </div>
 
             <div className="p-5 space-y-8">
               
-              {/* 1. Мои слоты */}
-              <div>
-                <h4 className="text-xs font-bold text-zinc-400 mb-3 uppercase tracking-wider">Когда я свободен</h4>
-                <div className="grid grid-cols-2 gap-3">
+              {/* Карточка 1: Выбор слотов */}
+              <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800/50">
+                <h4 className="text-xs font-bold text-zinc-400 mb-3 uppercase tracking-wider text-center">Моя доступность</h4>
+                <div className="grid grid-cols-2 gap-2">
                   {slotsConfig.map(slot => {
                     const isActive = mySlots.includes(slot.id);
                     return (
@@ -366,7 +383,7 @@ function CalendarView({ userId, allProfiles }) {
                         className={`p-3 rounded-xl font-bold transition-all border text-sm ${
                           isActive 
                             ? 'bg-gradient-to-r from-red-600 to-amber-500 border-transparent text-white shadow-lg' 
-                            : 'bg-zinc-950 border-zinc-800 text-zinc-500 hover:text-amber-500 hover:border-amber-500/50'
+                            : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-amber-500 hover:border-amber-500/50'
                         }`}
                       >
                         {slot.label}
@@ -376,19 +393,23 @@ function CalendarView({ userId, allProfiles }) {
                 </div>
               </div>
 
-              {/* 2. Кто идет */}
+              {/* Карточка 2: Друзья */}
               <div>
-                <h4 className="text-xs font-bold text-zinc-400 mb-3 uppercase tracking-wider">Кто еще свободен</h4>
+                <h4 className="text-xs font-bold text-zinc-400 mb-3 uppercase tracking-wider pl-1">Кто из друзей свободен</h4>
                 <div className="space-y-2">
                   {slotsConfig.map(slot => {
                     const people = friendsAvail[slot.id] || [];
                     return (
                       <div key={slot.id} className="bg-zinc-950 p-3 rounded-xl flex items-center justify-between border border-zinc-800/50">
-                        <span className="text-zinc-500 font-bold text-xs">{slot.label.split(' ')[0]}</span>
-                        <div className="flex flex-wrap gap-1.5 justify-end">
+                        <span className="text-zinc-500 font-bold text-xs w-1/4">{slot.label.split(' ')[0]}</span>
+                        <div className="flex flex-wrap gap-1.5 justify-end w-3/4">
                           {people.length > 0
-                            ? people.map((name, i) => <span key={i} className="bg-zinc-800 border border-zinc-700 text-zinc-200 font-medium text-[10px] px-2 py-1 rounded-md">{name}</span>)
-                            : <span className="text-zinc-700 text-[10px] italic">Никто</span>}
+                            ? people.map((name, i) => (
+                                <span key={i} className={`font-medium text-[10px] px-2 py-1 rounded-md border ${getUserBadgeClass(name)}`}>
+                                  {name}
+                                </span>
+                              ))
+                            : <span className="text-zinc-700 text-[10px] italic">Пока никого</span>}
                         </div>
                       </div>
                     );
@@ -396,11 +417,11 @@ function CalendarView({ userId, allProfiles }) {
                 </div>
               </div>
 
-              {/* 3. Ивенты на этот день */}
+              {/* Карточка 3: Ивенты и Долги */}
               <div>
-                <h4 className="text-xs font-bold text-zinc-400 mb-3 uppercase tracking-wider">События и Траты</h4>
+                <h4 className="text-xs font-bold text-zinc-400 mb-3 uppercase tracking-wider pl-1">Планы на этот день</h4>
                 {dayEvents.length === 0 ? (
-                  <p className="text-zinc-600 text-sm italic bg-zinc-950 p-4 rounded-xl border border-zinc-800/50 text-center">Нет запланированных встреч.</p>
+                  <p className="text-zinc-600 text-sm italic bg-zinc-950 p-4 rounded-xl border border-zinc-800/50 text-center">Запланированных встреч нет.</p>
                 ) : (
                   <div className="space-y-4">
                     {dayEvents.map(ev => {
@@ -410,32 +431,35 @@ function CalendarView({ userId, allProfiles }) {
 
                       return (
                         <div key={ev.id} className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl">
-                          <div className="flex justify-between items-start mb-3">
+                          <div className="flex justify-between items-start mb-4">
                             <div>
                               <h5 className="font-bold text-amber-400 text-lg">{ev.title}</h5>
-                              <p className="text-xs text-zinc-500 mt-1">Орг: {ev.profiles?.display_name} • Идут: <span className="text-zinc-300 font-bold">{participantsCount} чел.</span></p>
+                              <p className="text-xs text-zinc-500 mt-1">Организатор: <span className={getUserTextClass(ev.profiles?.display_name)}>{ev.profiles?.display_name}</span></p>
+                              <p className="text-xs text-zinc-500 mt-0.5">Участников: <span className="text-zinc-300 font-bold">{participantsCount}</span></p>
                             </div>
                             <button
                               onClick={() => toggleEventSubscribe(ev.id, isSubscribed)}
                               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
                                 isSubscribed 
-                                  ? 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700' 
+                                  ? 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:bg-zinc-700' 
                                   : 'bg-emerald-600/20 border-emerald-500/50 text-emerald-400 hover:bg-emerald-600/40'
                               }`}
                             >
-                              {isSubscribed ? 'Не иду' : 'Я иду!'}
+                              {isSubscribed ? 'Слиться' : 'Я иду!'}
                             </button>
                           </div>
 
-                          {/* Блок трат по ивенту */}
+                          {/* Блок трат привязанный к ивенту */}
                           {expenses.length > 0 && (
                             <div className="mt-3 pt-3 border-t border-zinc-800/50">
-                              <span className="text-[10px] uppercase font-bold text-zinc-600 tracking-wider">Траты в этот день:</span>
+                              <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Связанные траты:</span>
                               <div className="mt-2 space-y-1.5">
                                 {expenses.map(exp => (
-                                  <div key={exp.id} className="flex justify-between items-center text-xs bg-zinc-900 p-2 rounded-lg">
-                                    <span className="text-zinc-400">{exp.description} <span className="text-zinc-600">({allProfiles[exp.payer_id]})</span></span>
-                                    <span className="text-rose-400 font-bold">{exp.amount}</span>
+                                  <div key={exp.id} className="flex justify-between items-center text-xs bg-zinc-900/50 p-2 rounded-lg">
+                                    <span className="text-zinc-400 truncate max-w-[60%]">
+                                      {exp.description} <span className={`font-medium ${getUserTextClass(allProfiles[exp.payer_id])}`}>({allProfiles[exp.payer_id]})</span>
+                                    </span>
+                                    <span className="text-rose-400 font-bold">{exp.amount} ₽</span>
                                   </div>
                                 ))}
                               </div>
@@ -485,14 +509,12 @@ function EventsView({ userId }) {
   };
 
   const toggleSubscribe = async (eventId, isSubscribed) => {
-    // 1. Отправляем запрос в фоне
     if (isSubscribed) {
       await supabase.from('event_participants').delete().match({ event_id: eventId, user_id: userId });
     } else {
       await supabase.from('event_participants').insert({ event_id: eventId, user_id: userId });
     }
     
-    // 2. Мгновенно обновляем локальный стейт
     setEvents(events.map(ev => {
       if (ev.id === eventId) {
         const newParticipants = isSubscribed 
@@ -528,9 +550,9 @@ function EventsView({ userId }) {
                 <div>
                   <div className="flex items-center gap-3 mb-1">
                     <h3 className="font-extrabold text-zinc-100 text-lg">{ev.title}</h3>
-                    <span className="text-amber-400 font-bold bg-amber-950/30 px-2 py-1 rounded text-xs border border-amber-900/30">{ev.event_date}</span>
+                    <span className="text-amber-400 font-bold bg-amber-950/30 px-2 py-1 rounded text-xs border border-amber-900/30">{formatReadableDate(ev.event_date)}</span>
                   </div>
-                  <p className="text-xs text-zinc-500">Орг: {ev.profiles?.display_name} • Идут: <span className="text-zinc-300 font-bold">{participantsCount} чел.</span></p>
+                  <p className="text-xs text-zinc-500">Орг: <span className={getUserTextClass(ev.profiles?.display_name)}>{ev.profiles?.display_name}</span> • Идут: <span className="text-zinc-300 font-bold">{participantsCount} чел.</span></p>
                 </div>
                 
                 <button 
@@ -541,7 +563,7 @@ function EventsView({ userId }) {
                       : 'bg-emerald-600/20 border-emerald-500/50 text-emerald-400 hover:bg-emerald-600 hover:text-white'
                   }`}
                 >
-                  {isSubscribed ? 'Не иду' : 'Я иду!'}
+                  {isSubscribed ? 'Слиться' : 'Я иду!'}
                 </button>
               </div>
             );
@@ -561,30 +583,29 @@ function DebtsView({ userId, allProfiles }) {
   const [desc, setDesc] = React.useState('');
   const [splitUsers, setSplitUsers] = React.useState([]); 
   
-  const [balances, setBalances] = React.useState([]);
+  // const [balances, setBalances] = React.useState([]);
 
   const loadData = async () => {
     const { data: evs } = await supabase.from('events').select('id, title').order('event_date', { ascending: false });
     if (evs) setEvents(evs);
 
+    // Временно скрываем логику подсчета и отображения общего баланса по вашей просьбе
+    /*
     const { data: expenses } = await supabase.from('expenses').select('payer_id, amount, expense_splits(user_id, amount)');
-    
     if (expenses) {
       const calc = {};
       Object.keys(allProfiles).forEach(id => calc[id] = { id, name: allProfiles[id], total: 0 });
-      
       expenses.forEach(ex => {
         const cost = parseFloat(ex.amount);
         if (calc[ex.payer_id]) calc[ex.payer_id].total += cost;
-        
         ex.expense_splits.forEach(sp => {
           if (calc[sp.user_id]) calc[sp.user_id].total -= parseFloat(sp.amount);
         });
       });
-
       const result = Object.values(calc).sort((a,b) => b.total - a.total).filter(u => Math.abs(u.total) > 0.01);
       setBalances(result);
     }
+    */
   };
 
   React.useEffect(() => { loadData(); }, [allProfiles]);
@@ -607,11 +628,8 @@ function DebtsView({ userId, allProfiles }) {
 
   const toggleAllUsers = () => {
     const allIds = Object.keys(allProfiles);
-    if (splitUsers.length === allIds.length) {
-      setSplitUsers([]); // Сбрасываем выбор
-    } else {
-      setSplitUsers(allIds); // Выбираем всех
-    }
+    if (splitUsers.length === allIds.length) setSplitUsers([]);
+    else setSplitUsers(allIds);
   };
 
   const addExpense = async (e) => {
@@ -652,14 +670,14 @@ function DebtsView({ userId, allProfiles }) {
           </select>
           
           <div className="flex gap-3">
-            <input type="number" step="0.01" placeholder="Сумма" value={amount} onChange={e => setAmount(e.target.value)} required disabled={!eventId} className="w-1/3 bg-zinc-950 p-3 rounded-xl border border-zinc-800 focus:outline-none focus:border-amber-500 text-white disabled:opacity-50" />
+            <input type="number" step="0.01" placeholder="Сумма (₽)" value={amount} onChange={e => setAmount(e.target.value)} required disabled={!eventId} className="w-1/3 bg-zinc-950 p-3 rounded-xl border border-zinc-800 focus:outline-none focus:border-amber-500 text-white disabled:opacity-50" />
             <input type="text" placeholder="За что? (напр. Еда)" value={desc} onChange={e => setDesc(e.target.value)} required disabled={!eventId} className="w-2/3 bg-zinc-950 p-3 rounded-xl border border-zinc-800 focus:outline-none focus:border-amber-500 text-white disabled:opacity-50" />
           </div>
 
           {eventId && (
-            <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800/50 mt-4">
+            <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800/50 mt-4 animate-fade-in">
               <div className="flex justify-between items-center mb-3">
-                <h4 className="text-sm font-bold text-zinc-400">На кого делим? (по {splitPreview} на человека)</h4>
+                <h4 className="text-sm font-bold text-zinc-400">На кого делим? (по {splitPreview} ₽)</h4>
                 <button type="button" onClick={toggleAllUsers} className="text-xs text-amber-500 hover:text-amber-400 font-bold transition-colors">
                   {splitUsers.length === Object.keys(allProfiles).length ? 'Снять выделение' : 'Выбрать всех'}
                 </button>
@@ -671,7 +689,9 @@ function DebtsView({ userId, allProfiles }) {
                     <button 
                       type="button" key={uid} onClick={() => toggleSplitUser(uid)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
-                        isChecked ? 'bg-amber-500/20 border-amber-500/50 text-amber-400' : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-300'
+                        isChecked 
+                          ? 'bg-amber-500/20 border-amber-500/50 text-amber-400' 
+                          : `bg-zinc-900 border-zinc-800 hover:text-zinc-300 ${getUserTextClass(name)}`
                       }`}
                     >
                       {isChecked ? '✓ ' : '+ '}{name}
@@ -688,22 +708,13 @@ function DebtsView({ userId, allProfiles }) {
         </form>
       </div>
 
-      <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 shadow-xl">
+      {/* Блок с балансом временно закомментирован и скрыт */}
+      {/* 
+      <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 shadow-xl opacity-50">
         <h2 className="text-xl font-bold mb-2 text-zinc-200">Общий баланс компании</h2>
-        <p className="text-zinc-500 text-sm mb-6">Зеленый — человеку должны скинуться. Красный — человек в минусе, должен отдать.</p>
-        
-        <div className="space-y-3">
-          {balances.length === 0 && <p className="text-zinc-500 text-sm italic">Все долги закрыты или трат еще не было.</p>}
-          {balances.map((b, i) => (
-            <div key={i} className="flex justify-between items-center bg-zinc-950 p-4 rounded-xl border border-zinc-800/50">
-              <span className="text-zinc-300 font-bold">{b.name}</span>
-              <span className={`font-extrabold px-3 py-1 rounded-lg ${b.total > 0 ? 'text-emerald-400 bg-emerald-950/30' : 'text-rose-400 bg-rose-950/30'}`}>
-                {b.total > 0 ? '+' : ''}{b.total.toFixed(2)}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
+        <p className="text-zinc-500 text-sm mb-6">Блок временно скрыт в разработке.</p>
+      </div> 
+      */}
     </div>
   );
 }
