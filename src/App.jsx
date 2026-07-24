@@ -7,7 +7,7 @@ const getLocalToday = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-// Утилита для красивого отображения даты (например, "24 июля 2026")
+// Утилита для красивого отображения даты ("24 июля 2026")
 const formatReadableDate = (dateStr) => {
   if (!dateStr) return '';
   const [year, month, day] = dateStr.split('-');
@@ -15,33 +15,50 @@ const formatReadableDate = (dateStr) => {
   return `${parseInt(day)} ${months[parseInt(month) - 1]} ${year}`;
 };
 
-// Утилиты для генерации уникального цвета пользователя
-const getUserBadgeClass = (name) => {
-  if (!name) return 'bg-gray-100 border-gray-200 text-gray-500';
-  const palettes = [
-    'bg-red-50 border-red-200 text-red-700',
-    'bg-blue-50 border-blue-200 text-blue-700',
-    'bg-green-50 border-green-200 text-green-700',
-    'bg-purple-50 border-purple-200 text-purple-700',
-    'bg-amber-50 border-amber-200 text-amber-700',
-    'bg-cyan-50 border-cyan-200 text-cyan-700',
-  ];
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  return palettes[Math.abs(hash) % palettes.length];
-};
+// Палитра Google Material Design
+const AVATAR_COLORS = [
+  { id: 'blue', bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-300', ring: 'ring-blue-500' },
+  { id: 'red', bg: 'bg-red-100', text: 'text-red-700', border: 'border-red-300', ring: 'ring-red-500' },
+  { id: 'green', bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-300', ring: 'ring-green-500' },
+  { id: 'purple', bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-300', ring: 'ring-purple-500' },
+  { id: 'amber', bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-300', ring: 'ring-amber-500' },
+  { id: 'teal', bg: 'bg-teal-100', text: 'text-teal-700', border: 'border-teal-300', ring: 'ring-teal-500' },
+  { id: 'pink', bg: 'bg-pink-100', text: 'text-pink-700', border: 'border-pink-300', ring: 'ring-pink-500' },
+  { id: 'indigo', bg: 'bg-indigo-100', text: 'text-indigo-700', border: 'border-indigo-300', ring: 'ring-indigo-500' },
+];
 
-const getUserTextClass = (name) => {
-  if (!name) return 'text-gray-500';
-  const colors = ['text-red-600', 'text-blue-600', 'text-green-600', 'text-purple-600', 'text-amber-600', 'text-cyan-600'];
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  return colors[Math.abs(hash) % colors.length];
+const EMOJI_LIST = ['😎', '🍕', '🎮', '🚀', '🐱', '🥑', '⚡️', '🎉', '⚽️', '☕️', '🎧', '🔥'];
+
+// Утилита получения стилей профиля (с кастомизацией и fallback)
+const getProfileStyle = (profileObj) => {
+  if (typeof profileObj === 'string') {
+    let hash = 0;
+    for (let i = 0; i < profileObj.length; i++) hash = profileObj.charCodeAt(i) + ((hash << 5) - hash);
+    const color = AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+    return { ...color, emoji: null, name: profileObj };
+  }
+
+  if (!profileObj) return { ...AVATAR_COLORS[0], emoji: null, name: 'Гость' };
+
+  let color = AVATAR_COLORS.find(c => c.id === profileObj.avatar_color);
+  if (!color) {
+    let hash = 0;
+    const name = profileObj.display_name || '';
+    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    color = AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+  }
+
+  return {
+    ...color,
+    emoji: profileObj.avatar_emoji || null,
+    name: profileObj.display_name || 'Пользователь'
+  };
 };
 
 export default function App() {
   const [session, setSession] = useState(null);
   const [profiles, setProfiles] = useState({});
+  const [fullProfiles, setFullProfiles] = useState([]); // Полные объекты профилей
   const [isAdmin, setIsAdmin] = useState(false);
   
   const [isLoginMode, setIsLoginMode] = useState(true);
@@ -51,6 +68,7 @@ export default function App() {
   const [inviteCode, setInviteCode] = useState('');
   
   const [activeTab, setActiveTab] = useState('calendar');
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
@@ -58,24 +76,25 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  useEffect(() => {
-    if (session) {
-      supabase.from('profiles').select('*').then(({ data }) => {
-        if (data) {
-          const profMap = {};
-          let adminStatus = false;
-          data.forEach(p => {
-            profMap[p.id] = p.display_name;
-            if (p.id === session.user.id && p.is_admin === true) {
-              adminStatus = true;
-            }
-          });
-          setProfiles(profMap);
-          setIsAdmin(adminStatus);
+  const loadProfiles = async () => {
+    if (!session) return;
+    const { data } = await supabase.from('profiles').select('*');
+    if (data) {
+      setFullProfiles(data);
+      const profMap = {};
+      let adminStatus = false;
+      data.forEach(p => {
+        profMap[p.id] = p.display_name;
+        if (p.id === session.user.id && p.is_admin === true) {
+          adminStatus = true;
         }
       });
+      setProfiles(profMap);
+      setIsAdmin(adminStatus);
     }
-  }, [session]);
+  };
+
+  useEffect(() => { loadProfiles(); }, [session]);
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -110,6 +129,9 @@ export default function App() {
       }
     }
   };
+
+  const currentProfileObj = fullProfiles.find(p => p.id === session?.user?.id);
+  const currentStyle = getProfileStyle(currentProfileObj);
 
   const inputBaseClass = "w-full bg-white rounded-md p-3 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors text-gray-800 placeholder-gray-400 shadow-sm";
 
@@ -174,16 +196,23 @@ export default function App() {
             <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20a2 2 0 002 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zM9 14H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2z"/></svg>
             Friend Planner {isAdmin && <span className="text-xs bg-amber-100 text-amber-700 font-medium px-2 py-0.5 rounded ml-1">ADMIN</span>}
           </span>
-          <div className="flex items-center gap-4">
-            <div className="hidden sm:flex items-center gap-2">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm bg-blue-100 text-blue-700`}>
-                {profiles[session.user.id]?.charAt(0).toUpperCase()}
+          <div className="flex items-center gap-3">
+            {/* Кликабельная карточка профиля */}
+            <button 
+              onClick={() => setIsProfileModalOpen(true)}
+              className="flex items-center gap-2.5 p-1.5 pr-3 rounded-full border border-gray-200 hover:bg-gray-50 transition-colors bg-white shadow-sm"
+              title="Настройки профиля"
+            >
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${currentStyle.bg} ${currentStyle.text}`}>
+                {currentStyle.emoji || currentStyle.name.charAt(0).toUpperCase()}
               </div>
-              <span className="text-sm font-medium text-gray-700">
-                {profiles[session.user.id]}
+              <span className="text-sm font-medium text-gray-700 max-w-[100px] sm:max-w-[150px] truncate">
+                {currentStyle.name}
               </span>
-            </div>
-            <button onClick={() => supabase.auth.signOut()} className="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-md font-medium transition-colors border border-gray-200">
+              <span className="text-gray-400 text-xs">⚙️</span>
+            </button>
+
+            <button onClick={() => supabase.auth.signOut()} className="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-3.5 py-2 rounded-md font-medium transition-colors border border-gray-200">
               Выйти
             </button>
           </div>
@@ -208,17 +237,133 @@ export default function App() {
       </nav>
 
       <main className="max-w-4xl mx-auto p-4">
-        {activeTab === 'calendar' && <CalendarView userId={session.user.id} allProfiles={profiles} inputClass={inputBaseClass} />}
-        {activeTab === 'events' && <EventsView userId={session.user.id} inputClass={inputBaseClass} />}
-        {activeTab === 'debts' && <DebtsView userId={session.user.id} allProfiles={profiles} inputClass={inputBaseClass} />}
-        {activeTab === 'admin' && isAdmin && <AdminView currentUserId={session.user.id} allProfiles={profiles} />}
+        {activeTab === 'calendar' && <CalendarView userId={session.user.id} fullProfiles={fullProfiles} inputClass={inputBaseClass} />}
+        {activeTab === 'events' && <EventsView userId={session.user.id} fullProfiles={fullProfiles} inputClass={inputBaseClass} />}
+        {activeTab === 'debts' && <DebtsView userId={session.user.id} fullProfiles={fullProfiles} allProfilesMap={profiles} inputClass={inputBaseClass} />}
+        {activeTab === 'admin' && isAdmin && <AdminView currentUserId={session.user.id} fullProfiles={fullProfiles} allProfilesMap={profiles} onRefresh={loadProfiles} />}
       </main>
+
+      {/* МОДАЛКА НАСТРОЕК ПРОФИЛЯ */}
+      {isProfileModalOpen && (
+        <ProfileModal 
+          user={session.user} 
+          currentProfile={currentProfileObj} 
+          onClose={() => setIsProfileModalOpen(false)} 
+          onSave={() => { loadProfiles(); setIsProfileModalOpen(false); }}
+          inputClass={inputBaseClass}
+        />
+      )}
     </div>
   );
 }
 
-// ================= КАЛЕНДАРЬ + МОДАЛКА =================
-function CalendarView({ userId, allProfiles }) {
+// ================= МОДАЛКА КАСТОМИЗАЦИИ ПРОФИЛЯ =================
+function ProfileModal({ user, currentProfile, onClose, onSave, inputClass }) {
+  const [name, setName] = useState(currentProfile?.display_name || '');
+  const [selectedColor, setSelectedColor] = useState(currentProfile?.avatar_color || 'blue');
+  const [selectedEmoji, setSelectedEmoji] = useState(currentProfile?.avatar_emoji || '');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setIsSaving(true);
+
+    const updates = {
+      display_name: name.trim(),
+      avatar_color: selectedColor,
+      avatar_emoji: selectedEmoji || null
+    };
+
+    const { error } = await supabase.from('profiles').update(updates).eq('id', user.id);
+    setIsSaving(false);
+
+    if (error) {
+      alert('Ошибка при сохранении: ' + error.message);
+    } else {
+      onSave();
+    }
+  };
+
+  const previewStyle = getProfileStyle({ display_name: name || 'Имя', avatar_color: selectedColor, avatar_emoji: selectedEmoji });
+
+  return (
+    <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+      <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl border border-gray-100">
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-lg font-bold text-gray-900">Настройки профиля</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        </div>
+
+        <form onSubmit={handleSave} className="space-y-5">
+          {/* Предпросмотр аватарки */}
+          <div className="flex flex-col items-center justify-center">
+            <div className={`w-20 h-20 rounded-full flex items-center justify-center text-3xl font-bold shadow-sm transition-all border-2 ${previewStyle.bg} ${previewStyle.text} ${previewStyle.border}`}>
+              {previewStyle.emoji || previewStyle.name.charAt(0).toUpperCase()}
+            </div>
+            <p className="text-xs text-gray-400 mt-2">Предпросмотр иконки</p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Ваше имя</label>
+            <input type="text" value={name} onChange={e => setName(e.target.value)} required className={inputClass} />
+          </div>
+
+          {/* Выбор цвета */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-2">Цвет профиля</label>
+            <div className="grid grid-cols-4 gap-2">
+              {AVATAR_COLORS.map(color => (
+                <button
+                  key={color.id}
+                  type="button"
+                  onClick={() => setSelectedColor(color.id)}
+                  className={`h-10 rounded-lg flex items-center justify-center border transition-all ${color.bg} ${color.border} ${selectedColor === color.id ? `ring-2 ${color.ring} ring-offset-2` : ''}`}
+                >
+                  <span className={`w-3 h-3 rounded-full ${color.bg.replace('-100', '-500')}`}></span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Выбор эмодзи */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-2">Эмодзи (опционально)</label>
+            <div className="flex flex-wrap gap-1.5 justify-between bg-gray-50 p-2 rounded-xl border border-gray-200">
+              <button
+                type="button"
+                onClick={() => setSelectedEmoji('')}
+                className={`w-8 h-8 rounded-lg text-xs font-medium transition-all ${!selectedEmoji ? 'bg-white shadow border border-gray-300' : 'text-gray-400'}`}
+              >
+                Буква
+              </button>
+              {EMOJI_LIST.map(e => (
+                <button
+                  key={e}
+                  type="button"
+                  onClick={() => setSelectedEmoji(e)}
+                  className={`w-8 h-8 rounded-lg text-lg flex items-center justify-center transition-all ${selectedEmoji === e ? 'bg-white shadow border border-gray-300 scale-110' : 'hover:bg-gray-200'}`}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={isSaving}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-md transition-colors shadow-sm disabled:opacity-50"
+          >
+            {isSaving ? 'Сохранение...' : 'Сохранить изменения'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ================= КАЛЕНДАРЬ =================
+function CalendarView({ userId, fullProfiles }) {
   const [currentMonth, setCurrentMonth] = React.useState(new Date());
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [selectedDate, setSelectedDate] = React.useState(getLocalToday());
@@ -270,13 +415,24 @@ function CalendarView({ userId, allProfiles }) {
       const { data: myData } = await supabase.from('availability').select('slot').eq('user_id', userId).eq('date', selectedDate);
       if (myData) setMySlots(myData.map(d => d.slot));
 
-      const { data: friendsData } = await supabase.from('availability').select('slot, profiles(display_name)').eq('date', selectedDate);
+      const { data: friendsData } = await supabase.from('availability').select('slot, user_id').eq('date', selectedDate);
       if (friendsData) {
         const grouped = { morning: [], afternoon: [], evening: [], night: [] };
         friendsData.forEach(item => {
-          if (item.profiles?.display_name) grouped[item.slot].push(item.profiles.display_name);
+          const prof = fullProfiles.find(p => p.id === item.user_id);
+          if (prof) grouped[item.slot].push(prof);
         });
-        Object.keys(grouped).forEach(k => grouped[k] = [...new Set(grouped[k])]);
+        Object.keys(grouped).forEach(k => {
+          const unique = [];
+          const map = new Map();
+          for (const item of grouped[k]) {
+            if(!map.has(item.id)){
+              map.set(item.id, true);
+              unique.push(item);
+            }
+          }
+          grouped[k] = unique;
+        });
         setFriendsAvail(grouped);
       }
 
@@ -284,7 +440,6 @@ function CalendarView({ userId, allProfiles }) {
         .from('events')
         .select(`
           id, title, owner_id,
-          profiles!events_owner_id_fkey(display_name),
           event_participants(user_id),
           expenses(id, amount, description, payer_id)
         `)
@@ -294,7 +449,7 @@ function CalendarView({ userId, allProfiles }) {
       if (evsData) setDayEvents(evsData);
     }
     fetchDayData();
-  }, [selectedDate, userId, isModalOpen]);
+  }, [selectedDate, userId, isModalOpen, fullProfiles]);
 
   const toggleSlot = async (slotId) => {
     if (isLoading) return;
@@ -418,17 +573,20 @@ function CalendarView({ userId, allProfiles }) {
                 <h4 className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-wide">Кто из друзей свободен</h4>
                 <div className="space-y-2">
                   {slotsConfig.map(slot => {
-                    const people = friendsAvail[slot.id] || [];
+                    const peopleList = friendsAvail[slot.id] || [];
                     return (
                       <div key={slot.id} className="bg-gray-50 p-3 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between border border-gray-100 gap-2">
                         <span className="text-gray-600 font-medium text-sm">{slot.label.split(' ')[0]}</span>
                         <div className="flex flex-wrap gap-1.5 sm:justify-end">
-                          {people.length > 0
-                            ? people.map((name, i) => (
-                                <span key={i} className={`font-medium text-xs px-2.5 py-1 rounded-full border ${getUserBadgeClass(name)}`}>
-                                  {name}
-                                </span>
-                              ))
+                          {peopleList.length > 0
+                            ? peopleList.map((prof) => {
+                                const style = getProfileStyle(prof);
+                                return (
+                                  <span key={prof.id} className={`font-medium text-xs px-2.5 py-1 rounded-full border ${style.bg} ${style.text} ${style.border}`}>
+                                    {style.emoji ? `${style.emoji} ` : ''}{style.name}
+                                  </span>
+                                );
+                              })
                             : <span className="text-gray-400 text-xs italic">Пока никого</span>}
                         </div>
                       </div>
@@ -447,13 +605,15 @@ function CalendarView({ userId, allProfiles }) {
                       const isSubscribed = ev.event_participants?.some(p => p.user_id === userId);
                       const participantsCount = ev.event_participants?.length || 0;
                       const expenses = ev.expenses || [];
+                      const ownerProf = fullProfiles.find(p => p.id === ev.owner_id);
+                      const ownerStyle = getProfileStyle(ownerProf);
 
                       return (
                         <div key={ev.id} className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm">
                           <div className="flex justify-between items-start mb-3">
                             <div>
                               <h5 className="font-semibold text-gray-900 text-lg">{ev.title}</h5>
-                              <p className="text-xs text-gray-500 mt-1">Организатор: <span className={getUserTextClass(ev.profiles?.display_name)}>{ev.profiles?.display_name}</span></p>
+                              <p className="text-xs text-gray-500 mt-1">Организатор: <span className={`font-medium ${ownerStyle.text}`}>{ownerStyle.name}</span></p>
                               <p className="text-xs text-gray-500 mt-0.5">Участников: <span className="text-gray-700 font-medium">{participantsCount}</span></p>
                             </div>
                             <button
@@ -471,14 +631,18 @@ function CalendarView({ userId, allProfiles }) {
                             <div className="mt-3 pt-3 border-t border-gray-100">
                               <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Связанные траты:</span>
                               <div className="mt-2 space-y-2">
-                                {expenses.map(exp => (
-                                  <div key={exp.id} className="flex justify-between items-center text-xs bg-gray-50 p-2 rounded-md">
-                                    <span className="text-gray-600 truncate max-w-[60%]">
-                                      {exp.description} <span className={`font-medium ${getUserTextClass(allProfiles[exp.payer_id])}`}>({allProfiles[exp.payer_id]})</span>
-                                    </span>
-                                    <span className="text-gray-900 font-medium">{exp.amount} ₽</span>
-                                  </div>
-                                ))}
+                                {expenses.map(exp => {
+                                  const payerProf = fullProfiles.find(p => p.id === exp.payer_id);
+                                  const payerStyle = getProfileStyle(payerProf);
+                                  return (
+                                    <div key={exp.id} className="flex justify-between items-center text-xs bg-gray-50 p-2 rounded-md">
+                                      <span className="text-gray-600 truncate max-w-[60%]">
+                                        {exp.description} <span className={`font-medium ${payerStyle.text}`}>({payerStyle.name})</span>
+                                      </span>
+                                      <span className="text-gray-900 font-medium">{exp.amount} ₽</span>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             </div>
                           )}
@@ -497,7 +661,7 @@ function CalendarView({ userId, allProfiles }) {
 }
 
 // ================= ИВЕНТЫ =================
-function EventsView({ userId, inputClass }) {
+function EventsView({ userId, fullProfiles, inputClass }) {
   const [events, setEvents] = React.useState([]);
   const [title, setTitle] = React.useState('');
   const [date, setDate] = React.useState(getLocalToday());
@@ -505,7 +669,7 @@ function EventsView({ userId, inputClass }) {
   const fetchEvents = async () => {
     const { data, error } = await supabase
       .from('events')
-      .select(`id, title, event_date, owner_id, profiles!events_owner_id_fkey(display_name), event_participants(user_id)`)
+      .select(`id, title, event_date, owner_id, event_participants(user_id)`)
       .order('event_date', { ascending: true })
       .gte('event_date', getLocalToday()); 
       
@@ -571,6 +735,8 @@ function EventsView({ userId, inputClass }) {
           {events.map(ev => {
             const participantsCount = ev.event_participants?.length || 0;
             const isSubscribed = ev.event_participants?.some(p => p.user_id === userId);
+            const ownerProf = fullProfiles.find(p => p.id === ev.owner_id);
+            const ownerStyle = getProfileStyle(ownerProf);
 
             return (
               <div key={ev.id} className="bg-gray-50 p-4 rounded-xl border border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors hover:bg-white hover:border-gray-200">
@@ -580,7 +746,7 @@ function EventsView({ userId, inputClass }) {
                     <span className="bg-blue-100 text-blue-700 font-medium px-2 py-0.5 rounded text-xs">{formatReadableDate(ev.event_date)}</span>
                   </div>
                   <p className="text-xs text-gray-500 mt-1">
-                    Орг: <span className={`font-medium ${getUserTextClass(ev.profiles?.display_name)}`}>{ev.profiles?.display_name}</span> 
+                    Орг: <span className={`font-medium ${ownerStyle.text}`}>{ownerStyle.name}</span> 
                     <span className="mx-2">•</span> 
                     Участников: <span className="text-gray-700 font-medium">{participantsCount}</span>
                   </p>
@@ -606,7 +772,7 @@ function EventsView({ userId, inputClass }) {
 }
 
 // ================= ДОЛГИ И ТРАТЫ =================
-function DebtsView({ userId, allProfiles, inputClass }) {
+function DebtsView({ userId, fullProfiles, allProfilesMap, inputClass }) {
   const [events, setEvents] = React.useState([]);
   const [eventId, setEventId] = React.useState('');
   const [amount, setAmount] = React.useState('');
@@ -618,7 +784,7 @@ function DebtsView({ userId, allProfiles, inputClass }) {
     if (evs) setEvents(evs);
   };
 
-  React.useEffect(() => { loadData(); }, [allProfiles]);
+  React.useEffect(() => { loadData(); }, [allProfilesMap]);
 
   const handleEventChange = async (e) => {
     const eid = e.target.value;
@@ -626,8 +792,10 @@ function DebtsView({ userId, allProfiles, inputClass }) {
     if (!eid) return setSplitUsers([]);
 
     const { data } = await supabase.from('event_participants').select('user_id').eq('event_id', eid);
-    if (data) {
+    if (data && data.length > 0) {
       setSplitUsers(data.map(d => d.user_id));
+    } else {
+      setSplitUsers(Object.keys(allProfilesMap));
     }
   };
 
@@ -637,7 +805,7 @@ function DebtsView({ userId, allProfiles, inputClass }) {
   };
 
   const toggleAllUsers = () => {
-    const allIds = Object.keys(allProfiles);
+    const allIds = Object.keys(allProfilesMap);
     if (splitUsers.length === allIds.length) setSplitUsers([]);
     else setSplitUsers(allIds);
   };
@@ -664,6 +832,7 @@ function DebtsView({ userId, allProfiles, inputClass }) {
     await supabase.from('expense_splits').insert(splitsToInsert);
     
     setAmount(''); setDesc(''); setEventId(''); setSplitUsers([]);
+    alert('Трата успешно записана!');
     loadData();
   };
 
@@ -698,19 +867,21 @@ function DebtsView({ userId, allProfiles, inputClass }) {
               <div className="flex justify-between items-center mb-4 border-b border-gray-200 pb-2">
                 <h4 className="text-sm font-medium text-gray-700">На кого делим чек? <span className="text-gray-500 font-normal">(по {splitPreview} ₽)</span></h4>
                 <button type="button" onClick={toggleAllUsers} className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors">
-                  {splitUsers.length === Object.keys(allProfiles).length ? 'Снять выделение' : 'Выбрать всех'}
+                  {splitUsers.length === Object.keys(allProfilesMap).length ? 'Снять выделение' : 'Выбрать всех'}
                 </button>
               </div>
               <div className="flex flex-wrap gap-2 mt-2">
-                {Object.entries(allProfiles).map(([uid, name]) => {
+                {Object.entries(allProfilesMap).map(([uid, name]) => {
                   const isChecked = splitUsers.includes(uid);
+                  const prof = fullProfiles.find(p => p.id === uid);
+                  const style = getProfileStyle(prof || name);
                   return (
                     <button 
                       type="button" key={uid} onClick={() => toggleSplitUser(uid)}
                       className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${
                         isChecked 
-                          ? 'bg-blue-100 border-blue-200 text-blue-800' 
-                          : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-100'
+                          ? `${style.bg} ${style.border} ${style.text}` 
+                          : 'bg-white border-gray-300 text-gray-400 hover:bg-gray-100'
                       }`}
                     >
                       {isChecked ? '✓ ' : '+ '}{name}
@@ -733,33 +904,23 @@ function DebtsView({ userId, allProfiles, inputClass }) {
 }
 
 // ================= АДМИН ПАНЕЛЬ =================
-function AdminView({ currentUserId, allProfiles }) {
-  const [adminSubTab, setAdminSubTab] = React.useState('events'); // 'events', 'expenses', 'users'
+function AdminView({ currentUserId, fullProfiles, allProfilesMap, onRefresh }) {
+  const [adminSubTab, setAdminSubTab] = React.useState('events');
   const [eventsList, setEventsList] = React.useState([]);
   const [expensesList, setExpensesList] = React.useState([]);
-  const [profilesList, setProfilesList] = React.useState([]);
 
   const loadAdminData = async () => {
-    // 1. Загружаем абсолютно все события
     const { data: evs } = await supabase
       .from('events')
-      .select(`id, title, event_date, owner_id, profiles!events_owner_id_fkey(display_name)`)
+      .select(`id, title, event_date, owner_id`)
       .order('event_date', { ascending: false });
     if (evs) setEventsList(evs);
 
-    // 2. Загружаем абсолютно все траты
     const { data: exps } = await supabase
       .from('expenses')
       .select(`id, amount, description, payer_id, events(title)`)
       .order('id', { ascending: false });
     if (exps) setExpensesList(exps);
-
-    // 3. Загружаем профили
-    const { data: profs } = await supabase
-      .from('profiles')
-      .select(`id, display_name, login, is_admin`)
-      .order('display_name', { ascending: true });
-    if (profs) setProfilesList(profs);
   };
 
   React.useEffect(() => { loadAdminData(); }, []);
@@ -785,7 +946,10 @@ function AdminView({ currentUserId, allProfiles }) {
 
     const { error } = await supabase.from('profiles').update({ is_admin: newStatus }).eq('id', id);
     if (error) alert('Ошибка обновления прав: ' + error.message);
-    else loadAdminData();
+    else {
+      onRefresh();
+      loadAdminData();
+    }
   };
 
   return (
@@ -797,7 +961,6 @@ function AdminView({ currentUserId, allProfiles }) {
             <p className="text-xs text-gray-500 mt-0.5">Раздел только для администраторов</p>
           </div>
 
-          {/* Подпереключатель админки */}
           <div className="bg-gray-100 p-1 rounded-lg flex gap-1">
             {[
               { id: 'events', label: 'События' },
@@ -817,83 +980,91 @@ function AdminView({ currentUserId, allProfiles }) {
           </div>
         </div>
 
-        {/* 1. ВКЛАДКА СОБЫТИЙ */}
         {adminSubTab === 'events' && (
           <div className="space-y-3">
             {eventsList.length === 0 && <p className="text-gray-500 text-sm italic">Событий пока нет.</p>}
-            {eventsList.map(ev => (
-              <div key={ev.id} className="flex items-center justify-between bg-gray-50 p-4 rounded-xl border border-gray-100">
-                <div>
-                  <h4 className="font-semibold text-gray-900 text-sm">{ev.title}</h4>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    Дата: {formatReadableDate(ev.event_date)} • Орг: <span className={getUserTextClass(ev.profiles?.display_name)}>{ev.profiles?.display_name}</span>
-                  </p>
+            {eventsList.map(ev => {
+              const ownerProf = fullProfiles.find(p => p.id === ev.owner_id);
+              const ownerStyle = getProfileStyle(ownerProf);
+              return (
+                <div key={ev.id} className="flex items-center justify-between bg-gray-50 p-4 rounded-xl border border-gray-100">
+                  <div>
+                    <h4 className="font-semibold text-gray-900 text-sm">{ev.title}</h4>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Дата: {formatReadableDate(ev.event_date)} • Орг: <span className={ownerStyle.text}>{ownerStyle.name}</span>
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleDeleteEvent(ev.id, ev.title)}
+                    className="bg-red-50 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border border-red-200"
+                  >
+                    Удалить
+                  </button>
                 </div>
-                <button
-                  onClick={() => handleDeleteEvent(ev.id, ev.title)}
-                  className="bg-red-50 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border border-red-200"
-                >
-                  Удалить
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
-        {/* 2. ВКЛАДКА ТРАТ */}
         {adminSubTab === 'expenses' && (
           <div className="space-y-3">
             {expensesList.length === 0 && <p className="text-gray-500 text-sm italic">Трат пока нет.</p>}
-            {expensesList.map(exp => (
-              <div key={exp.id} className="flex items-center justify-between bg-gray-50 p-4 rounded-xl border border-gray-100">
-                <div>
-                  <h4 className="font-semibold text-gray-900 text-sm">{exp.description} — <span className="text-blue-600">{exp.amount} ₽</span></h4>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    Ивент: <span className="font-medium text-gray-700">{exp.events?.title || 'Без названия'}</span> • Платил: <span className={getUserTextClass(allProfiles[exp.payer_id])}>{allProfiles[exp.payer_id]}</span>
-                  </p>
+            {expensesList.map(exp => {
+              const payerProf = fullProfiles.find(p => p.id === exp.payer_id);
+              const payerStyle = getProfileStyle(payerProf);
+              return (
+                <div key={exp.id} className="flex items-center justify-between bg-gray-50 p-4 rounded-xl border border-gray-100">
+                  <div>
+                    <h4 className="font-semibold text-gray-900 text-sm">{exp.description} — <span className="text-blue-600">{exp.amount} ₽</span></h4>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Ивент: <span className="font-medium text-gray-700">{exp.events?.title || 'Без названия'}</span> • Платил: <span className={payerStyle.text}>{payerStyle.name}</span>
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleDeleteExpense(exp.id, exp.description)}
+                    className="bg-red-50 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border border-red-200"
+                  >
+                    Удалить
+                  </button>
                 </div>
-                <button
-                  onClick={() => handleDeleteExpense(exp.id, exp.description)}
-                  className="bg-red-50 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border border-red-200"
-                >
-                  Удалить
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
-        {/* 3. ВКЛАДКА ЮЗЕРОВ */}
         {adminSubTab === 'users' && (
           <div className="space-y-3">
-            {profilesList.map(p => (
-              <div key={p.id} className="flex items-center justify-between bg-gray-50 p-4 rounded-xl border border-gray-100">
-                <div className="flex items-center gap-3">
-                  <span className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${getUserBadgeClass(p.display_name)}`}>
-                    {p.display_name?.charAt(0).toUpperCase()}
-                  </span>
-                  <div>
-                    <h4 className="font-medium text-gray-800 text-sm flex items-center gap-2">
-                      {p.display_name} 
-                      {p.is_admin && <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded">ADMIN</span>}
-                    </h4>
-                    <p className="text-xs text-gray-400 font-mono">@{p.login}</p>
+            {fullProfiles.map(p => {
+              const style = getProfileStyle(p);
+              return (
+                <div key={p.id} className="flex items-center justify-between bg-gray-50 p-4 rounded-xl border border-gray-100">
+                  <div className="flex items-center gap-3">
+                    <span className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm border ${style.bg} ${style.text} ${style.border}`}>
+                      {style.emoji || style.name.charAt(0).toUpperCase()}
+                    </span>
+                    <div>
+                      <h4 className="font-medium text-gray-800 text-sm flex items-center gap-2">
+                        {p.display_name} 
+                        {p.is_admin && <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded">ADMIN</span>}
+                      </h4>
+                      <p className="text-xs text-gray-400 font-mono">@{p.login}</p>
+                    </div>
                   </div>
-                </div>
 
-                <button
-                  onClick={() => handleToggleAdmin(p.id, p.is_admin, p.display_name)}
-                  disabled={p.id === currentUserId}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors border ${
-                    p.is_admin 
-                      ? 'bg-gray-200 text-gray-700 border-gray-300 hover:bg-gray-300 disabled:opacity-50' 
-                      : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
-                  }`}
-                >
-                  {p.is_admin ? 'Снять админа' : 'Дать админа'}
-                </button>
-              </div>
-            ))}
+                  <button
+                    onClick={() => handleToggleAdmin(p.id, p.is_admin, p.display_name)}
+                    disabled={p.id === currentUserId}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors border ${
+                      p.is_admin 
+                        ? 'bg-gray-200 text-gray-700 border-gray-300 hover:bg-gray-300 disabled:opacity-50' 
+                        : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                    }`}
+                  >
+                    {p.is_admin ? 'Снять админа' : 'Дать админа'}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
 
