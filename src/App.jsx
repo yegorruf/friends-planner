@@ -227,6 +227,7 @@ function CalendarView({ userId, allProfiles }) {
         setMonthStats(counts);
       }
 
+      // Здесь связь с profiles указывать не нужно, нам нужны только даты
       const { data: eventsData } = await supabase.from('events').select('id, event_date').gte('event_date', startDate).lte('event_date', endDate);
       if (eventsData) {
         const evs = {};
@@ -257,16 +258,18 @@ function CalendarView({ userId, allProfiles }) {
         setFriendsAvail(grouped);
       }
 
-      const { data: evsData } = await supabase
+      // ЯВНОЕ УКАЗАНИЕ СВЯЗИ profiles!events_owner_id_fkey
+      const { data: evsData, error: evsError } = await supabase
         .from('events')
         .select(`
           id, title, owner_id,
-          profiles(display_name),
+          profiles!events_owner_id_fkey(display_name),
           event_participants(user_id),
           expenses(id, amount, description, payer_id)
         `)
         .eq('event_date', selectedDate);
         
+      if (evsError) console.error('Ошибка в календаре:', evsError);
       if (evsData) setDayEvents(evsData);
     }
     fetchDayData();
@@ -486,16 +489,16 @@ function EventsView({ userId }) {
   const [title, setTitle] = React.useState('');
   const [date, setDate] = React.useState(getLocalToday());
 
-const fetchEvents = async () => {
+  const fetchEvents = async () => {
+    // ЯВНОЕ УКАЗАНИЕ СВЯЗИ profiles!events_owner_id_fkey
     const { data, error } = await supabase
       .from('events')
-      .select(`id, title, event_date, owner_id, profiles(display_name), event_participants(user_id)`)
+      .select(`id, title, event_date, owner_id, profiles!events_owner_id_fkey(display_name), event_participants(user_id)`)
       .order('event_date', { ascending: true })
       .gte('event_date', getLocalToday()); 
       
     if (error) {
-      console.error('ОШИБКА ЗАГРУЗКИ ИВЕНТОВ:', error);
-      alert(`Ошибка БД: ${error.message}`);
+      console.error('Ошибка загрузки ивентов:', error);
     }
     
     if (data) setEvents(data);
@@ -594,7 +597,7 @@ function DebtsView({ userId, allProfiles }) {
     const { data: evs } = await supabase.from('events').select('id, title').order('event_date', { ascending: false });
     if (evs) setEvents(evs);
 
-    // Временно скрываем логику подсчета и отображения общего баланса по вашей просьбе
+    // Временно скрываем логику подсчета и отображения общего баланса
     /*
     const { data: expenses } = await supabase.from('expenses').select('payer_id, amount, expense_splits(user_id, amount)');
     if (expenses) {
