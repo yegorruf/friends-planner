@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
 
-// Получаем локальную дату в формате YYYY-MM-DD (чтобы избежать сдвигов по часовым поясам)
 const getLocalToday = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -9,7 +8,7 @@ const getLocalToday = () => {
 
 export default function App() {
   const [session, setSession] = useState(null);
-  const [profiles, setProfiles] = useState({}); // Кеш всех профилей
+  const [profiles, setProfiles] = useState({});
   
   const [isLoginMode, setIsLoginMode] = useState(true);
   const [login, setLogin] = useState('');
@@ -25,7 +24,6 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Глобальная загрузка профилей для отображения имен везде
   useEffect(() => {
     if (session) {
       supabase.from('profiles').select('*').then(({ data }) => {
@@ -40,26 +38,35 @@ export default function App() {
 
   const handleAuth = async (e) => {
     e.preventDefault();
-    const email = `${login}@app.local`;
+    
+    // Очищаем логин от случайных пробелов
+    const cleanLogin = login.trim().toLowerCase();
+    const email = `${cleanLogin}@app.local`;
 
     if (isLoginMode) {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) alert('Ошибка входа: проверьте логин или пароль');
+      if (error) alert(`Ошибка входа: ${error.message === 'Invalid login credentials' ? 'Неверный логин или пароль' : error.message}`);
     } else {
       if (inviteCode !== '7777') return alert('Неверный инвайт-код!');
       
       const { data, error } = await supabase.auth.signUp({ email, password });
-      if (error) return alert('Ошибка регистрации. Возможно, такой логин уже занят.');
+      
+      if (error) {
+        if (error.message.includes('already registered')) return alert('Этот логин уже занят! Придумайте другой.');
+        return alert(`Ошибка регистрации: ${error.message}`);
+      }
 
       if (data.user) {
         const { error: profileError } = await supabase
           .from('profiles')
-          .insert([{ id: data.user.id, login: login, display_name: displayName }]);
+          .insert([{ id: data.user.id, login: cleanLogin, display_name: displayName.trim() }]);
           
-        if (profileError) alert('Ошибка создания профиля: ' + profileError.message);
-        else {
+        if (profileError) {
+          alert(`Ошибка создания профиля: ${profileError.message}`);
+        } else {
           alert('Успешно! Теперь вы можете войти.');
           setIsLoginMode(true);
+          setPassword('');
         }
       }
     }
@@ -83,7 +90,7 @@ export default function App() {
             </div>
           )}
           <div>
-            <label className="block text-sm font-medium text-zinc-400 mb-1">Пароль</label>
+            <label className="block text-sm font-medium text-zinc-400 mb-1">Пароль (мин. 6 символов)</label>
             <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-zinc-950 rounded-lg p-3 border border-zinc-800 focus:outline-none focus:border-amber-500 transition-colors" required minLength={6} />
           </div>
           {!isLoginMode && (
@@ -97,7 +104,7 @@ export default function App() {
           </button>
           <div className="text-center pt-2">
             <button type="button" onClick={() => setIsLoginMode(!isLoginMode)} className="text-sm text-zinc-500 hover:text-amber-400 transition-colors">
-              {isLoginMode ? 'Нет аккаунта? Зарегистрироваться' : 'Уже есть аккаунт? Войти'}
+              {isLoginMode ? 'Нет аккаунта? Регистрация' : 'Уже есть аккаунт? Войти'}
             </button>
           </div>
         </form>
@@ -141,7 +148,7 @@ export default function App() {
       </nav>
 
       <main className="max-w-4xl mx-auto p-4">
-        {activeTab === 'calendar' && <CalendarView userId={session.user.id} />}
+        {activeTab === 'calendar' && <CalendarView userId={session.user.id} allProfiles={profiles} />}
         {activeTab === 'events' && <EventsView userId={session.user.id} />}
         {activeTab === 'debts' && <DebtsView userId={session.user.id} allProfiles={profiles} />}
       </main>
@@ -149,39 +156,31 @@ export default function App() {
   );
 }
 
-// ================= КАЛЕНДАРЬ =================
-function CalendarView({ userId }) {
+// ================= КАЛЕНДАРЬ + МОДАЛКА =================
+function CalendarView({ userId, allProfiles }) {
   const [currentMonth, setCurrentMonth] = React.useState(new Date());
+  
+  // Состояния для модалки
+  const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [selectedDate, setSelectedDate] = React.useState(getLocalToday());
   
+  // Данные внутри модалки
   const [mySlots, setMySlots] = React.useState([]);
   const [friendsAvail, setFriendsAvail] = React.useState({ morning: [], afternoon: [], evening: [], night: [] });
+  const [dayEvents, setDayEvents] = React.useState([]);
+  
+  // Данные для визуальной сетки месяца
   const [monthStats, setMonthStats] = React.useState({});
-  const [monthEvents, setMonthEvents] = React.useState({}); // Храним ивенты месяца
+  const [monthEvents, setMonthEvents] = React.useState({}); 
   const [isLoading, setIsLoading] = React.useState(false);
 
   const year = currentMonth.getFullYear();
   const month = currentMonth.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
+  // 1. Загрузка данных для всей сетки месяца
   React.useEffect(() => {
-    async function fetchData() {
-      // 1. Мои слоты
-      const { data: myData } = await supabase.from('availability').select('slot').eq('user_id', userId).eq('date', selectedDate);
-      if (myData) setMySlots(myData.map(d => d.slot));
-
-      // 2. Кто свободен
-      const { data: friendsData } = await supabase.from('availability').select('slot, profiles(display_name)').eq('date', selectedDate);
-      if (friendsData) {
-        const grouped = { morning: [], afternoon: [], evening: [], night: [] };
-        friendsData.forEach(item => {
-          if (item.profiles?.display_name) grouped[item.slot].push(item.profiles.display_name);
-        });
-        Object.keys(grouped).forEach(k => grouped[k] = [...new Set(grouped[k])]);
-        setFriendsAvail(grouped);
-      }
-
-      // 3. Данные за месяц (свободные люди + ИВЕНТЫ)
+    async function fetchMonthData() {
       const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
       const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${daysInMonth}`;
       
@@ -197,7 +196,7 @@ function CalendarView({ userId }) {
         setMonthStats(counts);
       }
 
-      const { data: eventsData } = await supabase.from('events').select('id, title, event_date, profiles(display_name)').gte('event_date', startDate).lte('event_date', endDate);
+      const { data: eventsData } = await supabase.from('events').select('id, event_date').gte('event_date', startDate).lte('event_date', endDate);
       if (eventsData) {
         const evs = {};
         eventsData.forEach(ev => {
@@ -207,8 +206,41 @@ function CalendarView({ userId }) {
         setMonthEvents(evs);
       }
     }
-    fetchData();
-  }, [selectedDate, userId, year, month, daysInMonth]);
+    fetchMonthData();
+  }, [year, month, daysInMonth, isModalOpen]); // Обновляем сетку, когда закрываем модалку
+
+  // 2. Загрузка данных для конкретного дня (когда открыта модалка)
+  React.useEffect(() => {
+    if (!isModalOpen) return;
+
+    async function fetchDayData() {
+      const { data: myData } = await supabase.from('availability').select('slot').eq('user_id', userId).eq('date', selectedDate);
+      if (myData) setMySlots(myData.map(d => d.slot));
+
+      const { data: friendsData } = await supabase.from('availability').select('slot, profiles(display_name)').eq('date', selectedDate);
+      if (friendsData) {
+        const grouped = { morning: [], afternoon: [], evening: [], night: [] };
+        friendsData.forEach(item => {
+          if (item.profiles?.display_name) grouped[item.slot].push(item.profiles.display_name);
+        });
+        Object.keys(grouped).forEach(k => grouped[k] = [...new Set(grouped[k])]);
+        setFriendsAvail(grouped);
+      }
+
+      // Загружаем ивенты, участников и траты на этот день
+      const { data: evsData } = await supabase
+        .from('events')
+        .select(`
+          id, title, owner_id,
+          profiles(display_name),
+          event_participants(user_id),
+          expenses(id, amount, description, payer_id)
+        `)
+        .eq('event_date', selectedDate);
+      if (evsData) setDayEvents(evsData);
+    }
+    fetchDayData();
+  }, [selectedDate, userId, isModalOpen]);
 
   const toggleSlot = async (slotId) => {
     if (isLoading) return;
@@ -222,12 +254,30 @@ function CalendarView({ userId }) {
       setMySlots([...mySlots, slotId]);
     }
     
-    setMonthStats(prev => {
-      const currentCount = prev[selectedDate] || 0;
-      return { ...prev, [selectedDate]: mySlots.includes(slotId) ? Math.max(0, currentCount - 1) : currentCount + 1 };
-    });
-    
     setIsLoading(false);
+  };
+
+  const toggleEventSubscribe = async (eventId, isSubscribed) => {
+    if (isSubscribed) {
+      await supabase.from('event_participants').delete().match({ event_id: eventId, user_id: userId });
+    } else {
+      await supabase.from('event_participants').insert({ event_id: eventId, user_id: userId });
+    }
+    // Быстрое локальное обновление стейта без лишнего запроса к БД
+    setDayEvents(dayEvents.map(ev => {
+      if (ev.id === eventId) {
+        const newParticipants = isSubscribed 
+          ? ev.event_participants.filter(p => p.user_id !== userId)
+          : [...ev.event_participants, { user_id: userId }];
+        return { ...ev, event_participants: newParticipants };
+      }
+      return ev;
+    }));
+  };
+
+  const handleDayClick = (dateStr) => {
+    setSelectedDate(dateStr);
+    setIsModalOpen(true);
   };
 
   const slotsConfig = [
@@ -242,19 +292,19 @@ function CalendarView({ userId }) {
   const days = Array.from({length: daysInMonth}, (_, i) => i + 1);
   const monthNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
   const formatDayString = (d) => `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-
   const todayStr = getLocalToday();
-  const selectedDayEvents = monthEvents[selectedDate] || [];
 
   return (
     <div className="space-y-6">
+      
+      {/* СЕТКА КАЛЕНДАРЯ */}
       <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 shadow-xl">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold text-amber-500">Календарь</h2>
-          <div className="flex items-center gap-4 bg-zinc-950 p-1 rounded-lg border border-zinc-800">
-            <button onClick={() => setCurrentMonth(new Date(year, month - 1, 1))} className="text-zinc-400 hover:text-amber-400 px-3 py-1 rounded transition-colors">&larr;</button>
-            <span className="font-bold text-zinc-200 min-w-[100px] text-center">{monthNames[month]} {year}</span>
-            <button onClick={() => setCurrentMonth(new Date(year, month + 1, 1))} className="text-zinc-400 hover:text-amber-400 px-3 py-1 rounded transition-colors">&rarr;</button>
+          <h2 className="text-xl font-bold text-amber-500 hidden sm:block">Календарь</h2>
+          <div className="flex items-center gap-4 bg-zinc-950 p-1 rounded-lg border border-zinc-800 w-full sm:w-auto justify-between">
+            <button onClick={() => setCurrentMonth(new Date(year, month - 1, 1))} className="text-zinc-400 hover:text-amber-400 px-4 py-2 rounded transition-colors">&larr;</button>
+            <span className="font-bold text-zinc-200 min-w-[120px] text-center">{monthNames[month]} {year}</span>
+            <button onClick={() => setCurrentMonth(new Date(year, month + 1, 1))} className="text-zinc-400 hover:text-amber-400 px-4 py-2 rounded transition-colors">&rarr;</button>
           </div>
         </div>
 
@@ -266,26 +316,24 @@ function CalendarView({ userId }) {
           {blanks.map((_, i) => <div key={`blank-${i}`} />)}
           {days.map(day => {
             const dateStr = formatDayString(day);
-            const isSelected = selectedDate === dateStr;
             const isToday = dateStr === todayStr;
             const freeCount = monthStats[dateStr] || 0;
             const isCrowded = freeCount >= 3; 
             const hasEvents = monthEvents[dateStr] && monthEvents[dateStr].length > 0;
 
-            // Логика стилей кнопок
             let btnClass = 'bg-zinc-950 text-zinc-300 hover:bg-zinc-800 border-2 border-transparent';
-            if (isSelected) btnClass = 'bg-gradient-to-br from-red-500 to-amber-500 text-white font-bold shadow-md transform scale-105 border-transparent';
-            else if (isCrowded) btnClass = 'bg-amber-950/40 text-amber-400 border-2 border-amber-500/30 font-bold hover:bg-amber-900/50';
+            if (isCrowded) btnClass = 'bg-amber-950/40 text-amber-400 border-2 border-amber-500/30 font-bold hover:bg-amber-900/50';
             
-            if (isToday && !isSelected) {
+            if (isToday) {
               btnClass += ' ring-2 ring-amber-500/80 ring-offset-2 ring-offset-zinc-900 text-amber-300';
             }
 
             return (
-              <button key={day} onClick={() => setSelectedDate(dateStr)} className={`relative p-2 h-10 rounded-xl text-sm transition-all duration-200 ${btnClass} flex items-center justify-center`}>
-                {day}
-                {hasEvents && !isSelected && (
-                  <span className="absolute bottom-1 w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_5px_rgba(239,68,68,0.8)]"></span>
+              <button key={day} onClick={() => handleDayClick(dateStr)} className={`relative p-2 h-12 rounded-xl text-sm transition-all duration-200 ${btnClass} flex flex-col items-center justify-center cursor-pointer`}>
+                <span>{day}</span>
+                {/* Точка ивента */}
+                {hasEvents && (
+                  <span className="absolute bottom-1.5 w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_5px_rgba(239,68,68,0.8)]"></span>
                 )}
               </button>
             );
@@ -293,59 +341,116 @@ function CalendarView({ userId }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 shadow-xl">
-          <h3 className="text-lg font-bold mb-2 text-zinc-200">Моя доступность</h3>
-          <p className="text-sm text-zinc-500">Отметьте, когда вы свободны:</p>
-          <div className="grid grid-cols-2 gap-3 text-sm mt-4">
-            {slotsConfig.map(slot => {
-              const isActive = mySlots.includes(slot.id);
-              return (
-                <button key={slot.id} onClick={() => toggleSlot(slot.id)} disabled={isLoading}
-                  className={`p-3 rounded-xl font-bold transition-all duration-200 border ${
-                    isActive ? 'bg-gradient-to-r from-red-600 to-amber-500 border-transparent text-white shadow-lg' : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-amber-500/50 hover:text-amber-400'
-                  } ${isLoading ? 'opacity-75 cursor-wait' : ''}`}
-                >
-                  {slot.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 shadow-xl">
-          <h3 className="text-lg font-bold mb-4 text-amber-500">Сводка на {selectedDate}</h3>
-          
-          {selectedDayEvents.length > 0 && (
-            <div className="mb-4 space-y-2">
-              <h4 className="text-xs uppercase text-zinc-500 font-bold tracking-wider">Запланированы встречи:</h4>
-              {selectedDayEvents.map(ev => (
-                <div key={ev.id} className="bg-gradient-to-r from-red-950/40 to-amber-950/40 border border-amber-900/30 p-2 rounded-lg flex justify-between items-center">
-                  <span className="font-bold text-amber-100">{ev.title}</span>
-                  <span className="text-xs text-amber-500/70">{ev.profiles?.display_name}</span>
-                </div>
-              ))}
+      {/* МОДАЛКА */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col relative animate-fade-in">
+            
+            {/* Header модалки */}
+            <div className="sticky top-0 bg-zinc-900/95 p-5 border-b border-zinc-800 flex justify-between items-center z-10">
+              <h3 className="text-xl font-bold text-amber-500">{selectedDate}</h3>
+              <button onClick={() => setIsModalOpen(false)} className="text-zinc-500 hover:text-white text-3xl leading-none">&times;</button>
             </div>
-          )}
 
-          <h4 className="text-xs uppercase text-zinc-500 font-bold tracking-wider mb-2">Кто свободен:</h4>
-          <div className="space-y-2">
-            {slotsConfig.map(slot => {
-              const people = friendsAvail[slot.id];
-              return (
-                <div key={slot.id} className="bg-zinc-950 p-3 rounded-xl flex items-center justify-between border border-zinc-800/50">
-                  <span className="text-zinc-400 font-bold text-xs">{slot.label.split(' ')[0]}</span>
-                  <div className="flex flex-wrap gap-1 justify-end">
-                    {people.length > 0 
-                      ? people.map((name, i) => <span key={i} className="bg-zinc-800 text-zinc-200 font-medium text-[10px] px-2 py-1 rounded-md">{name}</span>) 
-                      : <span className="text-zinc-700 text-[10px] italic font-medium">Никто</span>}
-                  </div>
+            <div className="p-5 space-y-8">
+              
+              {/* 1. Мои слоты */}
+              <div>
+                <h4 className="text-xs font-bold text-zinc-400 mb-3 uppercase tracking-wider">Когда я свободен</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  {slotsConfig.map(slot => {
+                    const isActive = mySlots.includes(slot.id);
+                    return (
+                      <button key={slot.id} onClick={() => toggleSlot(slot.id)} disabled={isLoading}
+                        className={`p-3 rounded-xl font-bold transition-all border text-sm ${
+                          isActive 
+                            ? 'bg-gradient-to-r from-red-600 to-amber-500 border-transparent text-white shadow-lg' 
+                            : 'bg-zinc-950 border-zinc-800 text-zinc-500 hover:text-amber-500 hover:border-amber-500/50'
+                        }`}
+                      >
+                        {slot.label}
+                      </button>
+                    );
+                  })}
                 </div>
-              );
-            })}
+              </div>
+
+              {/* 2. Кто идет */}
+              <div>
+                <h4 className="text-xs font-bold text-zinc-400 mb-3 uppercase tracking-wider">Кто еще свободен</h4>
+                <div className="space-y-2">
+                  {slotsConfig.map(slot => {
+                    const people = friendsAvail[slot.id] || [];
+                    return (
+                      <div key={slot.id} className="bg-zinc-950 p-3 rounded-xl flex items-center justify-between border border-zinc-800/50">
+                        <span className="text-zinc-500 font-bold text-xs">{slot.label.split(' ')[0]}</span>
+                        <div className="flex flex-wrap gap-1.5 justify-end">
+                          {people.length > 0
+                            ? people.map((name, i) => <span key={i} className="bg-zinc-800 border border-zinc-700 text-zinc-200 font-medium text-[10px] px-2 py-1 rounded-md">{name}</span>)
+                            : <span className="text-zinc-700 text-[10px] italic">Никто</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 3. Ивенты на этот день */}
+              <div>
+                <h4 className="text-xs font-bold text-zinc-400 mb-3 uppercase tracking-wider">События и Траты</h4>
+                {dayEvents.length === 0 ? (
+                  <p className="text-zinc-600 text-sm italic bg-zinc-950 p-4 rounded-xl border border-zinc-800/50 text-center">Нет запланированных встреч.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {dayEvents.map(ev => {
+                      const isSubscribed = ev.event_participants?.some(p => p.user_id === userId);
+                      const participantsCount = ev.event_participants?.length || 0;
+                      const expenses = ev.expenses || [];
+
+                      return (
+                        <div key={ev.id} className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl">
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <h5 className="font-bold text-amber-400 text-lg">{ev.title}</h5>
+                              <p className="text-xs text-zinc-500 mt-1">Орг: {ev.profiles?.display_name} • Идут: <span className="text-zinc-300 font-bold">{participantsCount} чел.</span></p>
+                            </div>
+                            <button
+                              onClick={() => toggleEventSubscribe(ev.id, isSubscribed)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                                isSubscribed 
+                                  ? 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700' 
+                                  : 'bg-emerald-600/20 border-emerald-500/50 text-emerald-400 hover:bg-emerald-600/40'
+                              }`}
+                            >
+                              {isSubscribed ? 'Не иду' : 'Я иду!'}
+                            </button>
+                          </div>
+
+                          {/* Блок трат по ивенту */}
+                          {expenses.length > 0 && (
+                            <div className="mt-3 pt-3 border-t border-zinc-800/50">
+                              <span className="text-[10px] uppercase font-bold text-zinc-600 tracking-wider">Траты в этот день:</span>
+                              <div className="mt-2 space-y-1.5">
+                                {expenses.map(exp => (
+                                  <div key={exp.id} className="flex justify-between items-center text-xs bg-zinc-900 p-2 rounded-lg">
+                                    <span className="text-zinc-400">{exp.description} <span className="text-zinc-600">({allProfiles[exp.payer_id]})</span></span>
+                                    <span className="text-rose-400 font-bold">{exp.amount}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -357,12 +462,11 @@ function EventsView({ userId }) {
   const [date, setDate] = React.useState(getLocalToday());
 
   const fetchEvents = async () => {
-    // Подтягиваем ивенты и всех их участников (event_participants)
     const { data } = await supabase
       .from('events')
       .select(`id, title, event_date, owner_id, profiles(display_name), event_participants(user_id)`)
       .order('event_date', { ascending: true })
-      .gte('event_date', getLocalToday()); // Показываем только будущие и сегодняшние
+      .gte('event_date', getLocalToday()); 
       
     if (data) setEvents(data);
   };
@@ -371,10 +475,8 @@ function EventsView({ userId }) {
 
   const createEvent = async (e) => {
     e.preventDefault();
-    // Создаем ивент
     const { data: newEvent } = await supabase.from('events').insert([{ title, event_date: date, owner_id: userId }]).select().single();
     if (newEvent) {
-      // Автоматически подписываем создателя
       await supabase.from('event_participants').insert({ event_id: newEvent.id, user_id: userId });
     }
     setTitle(''); setDate(getLocalToday());
@@ -442,21 +544,17 @@ function EventsView({ userId }) {
 function DebtsView({ userId, allProfiles }) {
   const [events, setEvents] = React.useState([]);
   
-  // Форма добавления траты
   const [eventId, setEventId] = React.useState('');
   const [amount, setAmount] = React.useState('');
   const [desc, setDesc] = React.useState('');
-  const [splitUsers, setSplitUsers] = React.useState([]); // Массив ID юзеров, на кого делим
+  const [splitUsers, setSplitUsers] = React.useState([]); 
   
-  // Итоговый баланс
   const [balances, setBalances] = React.useState([]);
 
   const loadData = async () => {
-    // 1. Ивенты (для селекта)
     const { data: evs } = await supabase.from('events').select('id, title').order('event_date', { ascending: false });
     if (evs) setEvents(evs);
 
-    // 2. Все траты и их разделения для подсчета баланса
     const { data: expenses } = await supabase.from('expenses').select('payer_id, amount, expense_splits(user_id, amount)');
     
     if (expenses) {
@@ -465,10 +563,8 @@ function DebtsView({ userId, allProfiles }) {
       
       expenses.forEach(ex => {
         const cost = parseFloat(ex.amount);
-        // Плательщику плюсуем всю сумму (он в плюсе)
         if (calc[ex.payer_id]) calc[ex.payer_id].total += cost;
         
-        // Каждому участнику сплита минусуем его долю
         ex.expense_splits.forEach(sp => {
           if (calc[sp.user_id]) calc[sp.user_id].total -= parseFloat(sp.amount);
         });
@@ -481,7 +577,6 @@ function DebtsView({ userId, allProfiles }) {
 
   React.useEffect(() => { loadData(); }, [allProfiles]);
 
-  // Когда выбираем ивент - подтягиваем его участников, чтобы автоматически поставить им галочки
   const handleEventChange = async (e) => {
     const eid = e.target.value;
     setEventId(eid);
@@ -504,14 +599,12 @@ function DebtsView({ userId, allProfiles }) {
     
     const cost = parseFloat(amount);
     
-    // 1. Создаем запись о трате
     const { data: newExp, error } = await supabase.from('expenses').insert([{
       event_id: eventId, payer_id: userId, amount: cost, description: desc, split_type: 'custom'
     }]).select().single();
     
     if (error) return alert('Ошибка сохранения траты');
 
-    // 2. Создаем доли (делим поровну на выбранных)
     const splitAmount = cost / splitUsers.length;
     const splitsToInsert = splitUsers.map(uid => ({
       expense_id: newExp.id,
