@@ -639,7 +639,7 @@ function CalendarView({ userId, fullProfiles }) {
                                       <span className="text-gray-600 truncate max-w-[60%]">
                                         {exp.description} <span className={`font-medium ${payerStyle.text}`}>({payerStyle.name})</span>
                                       </span>
-                                      <span className="text-gray-900 font-medium">{exp.amount} ₽</span>
+                                      <span className="text-gray-900 font-medium">{exp.amount} BYN</span>
                                     </div>
                                   );
                                 })}
@@ -853,7 +853,7 @@ function DebtsView({ userId, fullProfiles, allProfilesMap, inputClass }) {
           
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="w-full sm:w-1/3">
-              <label className="block text-xs font-medium text-gray-500 mb-1 ml-1">Сумма (₽)</label>
+              <label className="block text-xs font-medium text-gray-500 mb-1 ml-1">Сумма (BYN)</label>
               <input type="number" step="0.01" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} required disabled={!eventId} className={`${inputClass} disabled:bg-gray-50 disabled:text-gray-400`} />
             </div>
             <div className="w-full sm:w-2/3">
@@ -865,7 +865,7 @@ function DebtsView({ userId, fullProfiles, allProfilesMap, inputClass }) {
           {eventId && (
             <div className="bg-gray-50 p-5 rounded-xl border border-gray-100 mt-4 animate-fade-in">
               <div className="flex justify-between items-center mb-4 border-b border-gray-200 pb-2">
-                <h4 className="text-sm font-medium text-gray-700">На кого делим чек? <span className="text-gray-500 font-normal">(по {splitPreview} ₽)</span></h4>
+                <h4 className="text-sm font-medium text-gray-700">На кого делим чек? <span className="text-gray-500 font-normal">(по {splitPreview} BYN)</span></h4>
                 <button type="button" onClick={toggleAllUsers} className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors">
                   {splitUsers.length === Object.keys(allProfilesMap).length ? 'Снять выделение' : 'Выбрать всех'}
                 </button>
@@ -1015,7 +1015,7 @@ function AdminView({ currentUserId, fullProfiles, allProfilesMap, onRefresh }) {
               return (
                 <div key={exp.id} className="flex items-center justify-between bg-gray-50 p-4 rounded-xl border border-gray-100">
                   <div>
-                    <h4 className="font-semibold text-gray-900 text-sm">{exp.description} — <span className="text-blue-600">{exp.amount} ₽</span></h4>
+                    <h4 className="font-semibold text-gray-900 text-sm">{exp.description} — <span className="text-blue-600">{exp.amount} BYN</span></h4>
                     <p className="text-xs text-gray-500 mt-0.5">
                       Ивент: <span className="font-medium text-gray-700">{exp.events?.title || 'Без названия'}</span> • Платил: <span className={payerStyle.text}>{payerStyle.name}</span>
                     </p>
